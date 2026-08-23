@@ -1,0 +1,40 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "Checkout block lab"
+handle = "checkout-block"
+uid = "8082ff3c-b0c2-9ea4-bb01-47e85a38312a0cf6ecd0"
+type = "ui_extension"
+
+  [extensions.capabilities]
+  # Lets the extension read shop/customer data through the Storefront API
+  api_access = true
+  # Lets the extension block the buyer from progressing (validation experiments)
+  block_progress = true
+  # Lets the extension call your own backend (add the domain below before using)
+  network_access = false
+
+  # Dynamic target: merchant drags this block anywhere in the checkout editor.
+  [[extensions.targeting]]
+  module = "./src/CheckoutBlock.tsx"
+  target = "purchase.checkout.block.render"
+
+  # Static target: pinned right under the shipping address form.
+  [[extensions.targeting]]
+  module = "./src/DeliveryAddressAfter.tsx"
+  target = "purchase.checkout.delivery-address.render-after"
+
+  # Merchant-editable settings, surfaced in the checkout editor sidebar.
+  [extensions.settings]
+
+    [[extensions.settings.fields]]
+    key = "banner_title"
+    type = "single_line_text_field"
+    name = "Banner title"
+    description = "Heading shown on the block"
+
+    [[extensions.settings.fields]]
+    key = "banner_body"
+    type = "multi_line_text_field"
+    name = "Banner body"
+    description = "Body copy shown on the block"

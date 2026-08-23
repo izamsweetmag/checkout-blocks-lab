@@ -1,0 +1,4 @@
+{
+  "name": "VAT relief discount",
+  "description": "Removes the VAT element from cart lines the buyer declared as VAT-relief eligible"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "checkout-block",
+  "private": true,
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@preact/signals": "^2.3.1",
+    "@shopify/ui-extensions": "2026.7.x",
+    "preact": "^10.27.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

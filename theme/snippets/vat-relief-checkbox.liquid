@@ -1,0 +1,57 @@
+{%- comment -%}
+  VAT relief checkbox for a single cart line.
+
+  Usage, inside your cart line loop:
+
+    {% render 'vat-relief-checkbox', line_item: item, line_index: forloop.index %}
+
+  Renders nothing unless the line is one half of a VAT-relief pair, so it is
+  safe to call for every line.
+
+  Two states:
+    - original variant (taxed)      -> unticked box, ticking swaps to the clone
+    - clone variant (zero-rated)    -> ticked box, unticking swaps back
+
+  The buyer's declaration is recorded as the line property `_vat_relief` so the
+  order carries evidence of the self-declaration, which is the part HMRC cares
+  about. The property does NOT drive the tax — the merchandise does.
+{%- endcomment -%}
+
+{%- liquid
+  assign variant = line_item.variant
+  assign paired = variant.metafields.vat_relief.paired_variant.value
+  assign original = variant.metafields.vat_relief.original_variant.value
+
+  if original
+    assign is_relieved = true
+    assign swap_target = original.id
+  elsif paired
+    assign is_relieved = false
+    assign swap_target = paired.id
+  else
+    assign swap_target = blank
+  endif
+-%}
+
+{%- if swap_target != blank -%}
+  <div class="vat-relief" data-vat-relief>
+    <label class="vat-relief__label">
+      <input
+        type="checkbox"
+        class="vat-relief__input"
+        data-vat-relief-toggle
+        data-line-index="{{ line_index }}"
+        data-line-key="{{ line_item.key }}"
+        data-swap-to="{{ swap_target }}"
+        data-quantity="{{ line_item.quantity }}"
+        {% if is_relieved %}checked{% endif %}
+      >
+      <span class="vat-relief__text">
+        The price shown includes VAT. If you qualify for VAT relief,
+        <strong>tick the box</strong> to remove the VAT.
+        <a href="/pages/vat-relief">What is VAT relief?</a>
+      </span>
+    </label>
+    <span class="vat-relief__status" data-vat-relief-status hidden>Updating…</span>
+  </div>
+{%- endif -%}

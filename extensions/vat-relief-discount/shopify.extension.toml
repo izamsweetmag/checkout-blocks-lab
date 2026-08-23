@@ -1,0 +1,17 @@
+api_version = "2025-04"
+
+[[extensions]]
+name = "t:name"
+handle = "vat-relief-discount"
+uid = "8ddfe14a-36a8-cce7-3014-367d5c52e4785a42444a"
+type = "function"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
