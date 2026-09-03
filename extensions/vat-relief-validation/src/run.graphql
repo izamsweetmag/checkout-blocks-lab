@@ -1,0 +1,28 @@
+query RunInput {
+  cart {
+    lines {
+      id
+      quantity
+      # Written by the cart-page checkbox. Its ABSENCE is the whole point of
+      # this function: a zero-rated line with no declaration attached.
+      declaration: attribute(key: "VAT relief") {
+        value
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          title
+          # Only the zero-rated counterpart carries this metafield, so its
+          # presence identifies a relief line without needing option parsing.
+          reliefPair: metafield(namespace: "vat_relief", key: "original_variant") {
+            value
+          }
+          product {
+            title
+          }
+        }
+      }
+    }
+  }
+}

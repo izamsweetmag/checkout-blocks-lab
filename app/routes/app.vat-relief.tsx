@@ -21,7 +21,7 @@ import {
   checkDrift,
   ensureMetafieldDefinitions,
   listEligibleProducts,
-  provisionClones,
+  provisionReliefVariants,
 } from "../lib/vat-relief.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -47,7 +47,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (intent === "provision") {
       const products = await listEligibleProducts(admin);
-      const created = await provisionClones(admin, products);
+      const created = await provisionReliefVariants(admin, products);
       if (!created.length) {
         return { ok: true, message: "Nothing to do — every eligible variant is already paired." };
       }
@@ -76,16 +76,16 @@ export default function VatRelief() {
     <s-page heading="VAT relief — zero-rated variant swap">
       <s-section heading="What this does">
         <s-paragraph>
-          For every product tagged <s-text type="strong">{ELIGIBILITY_TAG}</s-text>, this creates a
-          hidden clone product whose variants are non-taxable and priced ex-VAT
-          (gross ÷ {(1 + VAT_RATE).toFixed(2)}). The cart-page checkbox swaps the line to the clone,
-          so the order carries a genuine £0.00 VAT line instead of a discounted
-          but still-taxed one.
+          For every product tagged <s-text type="strong">{ELIGIBILITY_TAG}</s-text>, this adds a
+          “VAT relief: No / Yes” option and creates the Yes variant non-taxable and
+          priced ex-VAT (gross ÷ {(1 + VAT_RATE).toFixed(2)}). The cart-page checkbox swaps the line
+          between the two, so the order carries a genuine £0.00 VAT line instead
+          of a discounted but still-taxed one.
         </s-paragraph>
         <s-paragraph>
           Setting <s-text type="strong">taxable: false</s-text> on its own is not enough. With
           tax-included pricing Shopify still charges the full listed price to an
-          exempt buyer, so the clone has to carry the net price as well.
+          exempt buyer, so the relief variant has to carry the net price as well.
         </s-paragraph>
       </s-section>
 
@@ -111,7 +111,7 @@ export default function VatRelief() {
               <th style={cell}>Product</th>
               <th style={cell}>Variant</th>
               <th style={cell}>Gross</th>
-              <th style={cell}>Clone (net)</th>
+              <th style={cell}>Relief (net)</th>
               <th style={cell}>VAT removed</th>
               <th style={cell}>Paired</th>
             </tr>
@@ -122,7 +122,7 @@ export default function VatRelief() {
                 <td style={cell}>{row.productTitle}</td>
                 <td style={cell}>{row.variantTitle}</td>
                 <td style={cell}>{row.grossPrice}</td>
-                <td style={cell}>{row.clonePrice}</td>
+                <td style={cell}>{row.reliefPrice}</td>
                 <td style={cell}>{row.vatRemoved}</td>
                 <td style={cell}>{row.alreadyPaired ? "yes" : "no"}</td>
               </tr>
@@ -133,15 +133,15 @@ export default function VatRelief() {
 
       <s-section heading="3. Provision">
         <s-paragraph>
-          Creates the clones as <s-text type="strong">draft</s-text> products. They must be published
-          to the Online Store channel before a buyer can add one to a cart —
-          which also makes them reachable by URL. Read the trade-off in
-          VAT-RELIEF-VARIANT-SWAP.md before you publish.
+          This <s-text type="strong">modifies the original products</s-text>: it adds an option to each
+          one (existing variants keep their current values and are set to “No”).
+          Nothing new appears in search or the catalogue. The relief variant will
+          show in the product page selector until you hide it in the theme.
         </s-paragraph>
         <fetcher.Form method="post">
           <input type="hidden" name="intent" value="provision" />
           <s-button type="submit" variant="primary" {...(busy ? { disabled: true } : {})}>
-            Provision clones
+            Provision relief variants
           </s-button>
         </fetcher.Form>
         {fetcher.data ? (
@@ -153,12 +153,12 @@ export default function VatRelief() {
 
       <s-section heading="4. Drift">
         {problems.length === 0 ? (
-          <s-paragraph>No drift. Every clone is non-taxable and correctly priced.</s-paragraph>
+          <s-paragraph>No drift. Every relief variant is non-taxable and correctly priced.</s-paragraph>
         ) : (
           <s-stack direction="block" gap="base">
             <s-banner tone="warning">
               <s-paragraph>
-                {problems.length} clone variant(s) are out of step with their original.
+                {problems.length} relief variant(s) are out of step with their taxed counterpart.
                 Nothing keeps them in sync automatically.
               </s-paragraph>
             </s-banner>

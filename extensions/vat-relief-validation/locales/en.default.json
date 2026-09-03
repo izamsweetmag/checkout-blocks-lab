@@ -1,0 +1,4 @@
+{
+  "name": "VAT relief declaration required",
+  "description": "Blocks checkout when a zero-rated VAT relief item has no customer declaration attached"
+}

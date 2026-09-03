@@ -1,0 +1,16 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "t:name"
+handle = "vat-relief-validation"
+type = "function"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "purchase.validation.run"
+  input_query = "src/run.graphql"
+  export = "run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"

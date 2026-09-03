@@ -1,5 +1,5 @@
 /**
- * VAT relief via zero-rated variant swap.
+ * VAT relief via a zero-rated variant on the SAME product.
  *
  * Why this exists: Shopify has no tax API. A discount can change what the buyer
  * pays but not whether the line is taxable, so a discount-based VAT relief still
@@ -12,22 +12,31 @@
  *    then the customer is still charged the full listed product price."
  *
  * The same holds for a non-taxable variant. So it is NOT enough to set
- * `taxable: false` — the clone must also be priced at the net amount, or the
+ * `taxable: false` — the relief variant must also carry the net price, or the
  * buyer pays the VAT-inclusive price with no VAT recorded, which is the worst
  * of both worlds.
  *
- *   clone price = gross / (1 + VAT_RATE)
+ *   relief price = gross / (1 + VAT_RATE)
+ *
+ * Provisioning adds a "VAT relief: No / Yes" option to each eligible product
+ * (variantStrategy LEAVE_AS_IS, so existing variants are updated in place and
+ * no variants are created), then creates the Yes counterparts explicitly so we
+ * control price, taxability and inventory.
  */
 
 import {
-  CLONE_TAG,
   ELIGIBILITY_TAG,
   METAFIELD_NAMESPACE,
   ORIGINAL_VARIANT_KEY,
   PAIRED_VARIANT_KEY,
+  RELIEF_OPTION_NAME,
+  RELIEF_OPTION_NO,
+  RELIEF_OPTION_YES,
   netPrice,
+  reliefValueOf,
   type DriftRow,
   type EligibleProduct,
+  type SelectedOption,
 } from "./vat-relief";
 
 export * from "./vat-relief";
@@ -122,32 +131,70 @@ export async function ensureMetafieldDefinitions(admin: Admin) {
 // Reading eligible products
 // ---------------------------------------------------------------------------
 
-const ELIGIBLE_PRODUCTS_QUERY = `#graphql
-  query EligibleProducts($query: String!, $first: Int!) {
-    products(first: $first, query: $query) {
-      nodes {
-        id
-        title
-        handle
-        status
-        options { name values }
-        variants(first: 100) {
-          nodes {
-            id
-            title
-            sku
-            price
-            taxable
-            selectedOptions { name value }
-            paired: metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${PAIRED_VARIANT_KEY}") {
-              value
-            }
-          }
+const PRODUCT_FIELDS = `
+  id
+  title
+  handle
+  status
+  options { name values }
+  variants(first: 100) {
+    nodes {
+      id
+      title
+      sku
+      price
+      taxable
+      selectedOptions { name value }
+      paired: metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${PAIRED_VARIANT_KEY}") {
+        value
+      }
+      original: metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${ORIGINAL_VARIANT_KEY}") {
+        reference {
+          ... on ProductVariant { id price }
         }
       }
     }
   }
 `;
+
+const ELIGIBLE_PRODUCTS_QUERY = `#graphql
+  query EligibleProducts($query: String!, $first: Int!) {
+    products(first: $first, query: $query) {
+      nodes { ${PRODUCT_FIELDS} }
+    }
+  }
+`;
+
+const SINGLE_PRODUCT_QUERY = `#graphql
+  query VatReliefProduct($id: ID!) {
+    product(id: $id) { ${PRODUCT_FIELDS} }
+  }
+`;
+
+function mapProduct(product: any): EligibleProduct {
+  return {
+    id: product.id,
+    title: product.title,
+    handle: product.handle,
+    status: product.status,
+    options: product.options,
+    hasReliefOption: (product.options ?? []).some(
+      (option: any) => option.name === RELIEF_OPTION_NAME,
+    ),
+    variants: product.variants.nodes.map((variant: any) => ({
+      id: variant.id,
+      title: variant.title,
+      sku: variant.sku,
+      price: variant.price,
+      taxable: variant.taxable,
+      selectedOptions: variant.selectedOptions,
+      isReliefVariant:
+        reliefValueOf(variant.selectedOptions) === RELIEF_OPTION_YES,
+      pairedVariantId: variant.paired?.value ?? null,
+      expectedReliefPrice: netPrice(variant.price),
+    })),
+  };
+}
 
 export async function listEligibleProducts(
   admin: Admin,
@@ -156,52 +203,53 @@ export async function listEligibleProducts(
   const data = await gql<{ products: { nodes: any[] } }>(
     admin,
     ELIGIBLE_PRODUCTS_QUERY,
-    { query: `tag:'${ELIGIBILITY_TAG}' AND -tag:'${CLONE_TAG}'`, first },
+    { query: `tag:'${ELIGIBILITY_TAG}'`, first },
   );
 
-  return data.products.nodes.map((product) => ({
-    id: product.id,
-    title: product.title,
-    handle: product.handle,
-    status: product.status,
-    options: product.options,
-    variants: product.variants.nodes.map((variant: any) => ({
-      id: variant.id,
-      title: variant.title,
-      sku: variant.sku,
-      price: variant.price,
-      taxable: variant.taxable,
-      selectedOptions: variant.selectedOptions,
-      pairedVariantId: variant.paired?.value ?? null,
-      expectedClonePrice: netPrice(variant.price),
-    })),
-  }));
+  return data.products.nodes.map(mapProduct);
+}
+
+async function readProduct(admin: Admin, id: string): Promise<EligibleProduct> {
+  const data = await gql<{ product: any }>(admin, SINGLE_PRODUCT_QUERY, { id });
+  if (!data.product) {
+    throw new Error(`Product not found: ${id}`);
+  }
+  return mapProduct(data.product);
 }
 
 // ---------------------------------------------------------------------------
-// Provisioning clones
+// Provisioning
 // ---------------------------------------------------------------------------
 
-const PRODUCT_CREATE = `#graphql
-  mutation CreateVatReliefClone($product: ProductCreateInput!) {
-    productCreate(product: $product) {
-      product { id title handle }
-      userErrors { field message }
+const PRODUCT_OPTIONS_CREATE = `#graphql
+  mutation AddVatReliefOption(
+    $productId: ID!
+    $options: [OptionCreateInput!]!
+  ) {
+    productOptionsCreate(
+      productId: $productId
+      options: $options
+      variantStrategy: LEAVE_AS_IS
+    ) {
+      product { id options { name values } }
+      userErrors { field message code }
     }
   }
 `;
 
 const VARIANTS_BULK_CREATE = `#graphql
-  mutation CreateCloneVariants(
+  mutation CreateReliefVariants(
     $productId: ID!
     $variants: [ProductVariantsBulkInput!]!
   ) {
-    productVariantsBulkCreate(
-      productId: $productId
-      variants: $variants
-      strategy: REMOVE_STANDALONE_VARIANT
-    ) {
-      productVariants { id title price taxable selectedOptions { name value } }
+    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+      productVariants {
+        id
+        title
+        price
+        taxable
+        selectedOptions { name value }
+      }
       userErrors { field message }
     }
   }
@@ -216,60 +264,92 @@ const METAFIELDS_SET = `#graphql
   }
 `;
 
-export async function provisionClones(
+function optionKey(options: SelectedOption[]): string {
+  return options
+    .filter((o) => o.name !== RELIEF_OPTION_NAME)
+    .map((o) => `${o.name}:${o.value}`)
+    .sort()
+    .join("|");
+}
+
+/**
+ * Adds the relief option where missing, then creates the zero-rated,
+ * net-priced counterpart for every taxed variant that lacks one.
+ *
+ * Safe to re-run: variants already carrying a pairing metafield are skipped.
+ */
+export async function provisionReliefVariants(
   admin: Admin,
   products: EligibleProduct[],
 ) {
   const created: { product: string; variants: number }[] = [];
 
-  for (const product of products) {
-    const unpaired = product.variants.filter((v) => !v.pairedVariantId);
-    if (!unpaired.length) continue;
+  for (const initial of products) {
+    // 1. Add the option if the product doesn't have it yet. LEAVE_AS_IS updates
+    //    existing variants to carry the first value ("No") without creating any.
+    if (!initial.hasReliefOption) {
+      const optionData = await gql<{ productOptionsCreate: any }>(
+        admin,
+        PRODUCT_OPTIONS_CREATE,
+        {
+          productId: initial.id,
+          options: [
+            {
+              name: RELIEF_OPTION_NAME,
+              values: [{ name: RELIEF_OPTION_NO }, { name: RELIEF_OPTION_YES }],
+            },
+          ],
+        },
+      );
 
-    // The clone carries the same option structure so the variant titles match
-    // what the buyer saw on the product page.
-    const createData = await gql<{ productCreate: any }>(admin, PRODUCT_CREATE, {
-      product: {
-        title: product.title,
-        // Draft keeps it out of the Online Store until you publish it
-        // deliberately. It has to be published before a buyer can add it to a
-        // cart — see the README for the visibility trade-off.
-        status: "DRAFT",
-        tags: [CLONE_TAG, ELIGIBILITY_TAG],
-        productOptions: product.options.map((option) => ({
-          name: option.name,
-          values: option.values.map((value) => ({ name: value })),
-        })),
-      },
-    });
-
-    const createErrors = userErrors(createData.productCreate);
-    if (createErrors.length) {
-      throw new Error(`${product.title}: ${createErrors.join("; ")}`);
+      const optionErrors = userErrors(optionData.productOptionsCreate);
+      if (optionErrors.length) {
+        throw new Error(`${initial.title}: ${optionErrors.join("; ")}`);
+      }
     }
 
-    const cloneProductId = createData.productCreate.product.id as string;
+    // 2. Re-read rather than predicting what the option change did to each
+    //    variant's selectedOptions. Guessing here is how you create variants
+    //    with the wrong option combination.
+    const product = await readProduct(admin, initial.id);
+
+    const taxed = product.variants.filter(
+      (variant) => !variant.isReliefVariant && !variant.pairedVariantId,
+    );
+    if (!taxed.length) continue;
+
+    // 3. Build the relief counterparts from the variant's real current options.
+    const variantsInput = taxed.map((variant) => {
+      const optionValues = variant.selectedOptions.map((option) => ({
+        optionName: option.name,
+        name:
+          option.name === RELIEF_OPTION_NAME ? RELIEF_OPTION_YES : option.value,
+      }));
+
+      if (!optionValues.some((o) => o.optionName === RELIEF_OPTION_NAME)) {
+        optionValues.push({
+          optionName: RELIEF_OPTION_NAME,
+          name: RELIEF_OPTION_YES,
+        });
+      }
+
+      return {
+        price: variant.expectedReliefPrice,
+        taxable: false,
+        optionValues,
+        inventoryItem: {
+          sku: variant.sku ? `${variant.sku}-VATFREE` : undefined,
+          // Two variants cannot share an inventory item. Untracked means the
+          // relief variant never blocks a sale — see VAT-RELIEF-VARIANT-SWAP.md.
+          tracked: false,
+        },
+      };
+    });
 
     const variantsData = await gql<{ productVariantsBulkCreate: any }>(
       admin,
       VARIANTS_BULK_CREATE,
-      {
-        productId: cloneProductId,
-        variants: unpaired.map((variant) => ({
-          price: variant.expectedClonePrice,
-          taxable: false,
-          optionValues: variant.selectedOptions.map((option) => ({
-            optionName: option.name,
-            name: option.value,
-          })),
-          inventoryItem: {
-            sku: variant.sku ? `${variant.sku}-VATFREE` : undefined,
-            // Not tracked: the clone has its own inventory item and cannot
-            // share stock with the original. See the README.
-            tracked: false,
-          },
-        })),
-      },
+      { productId: product.id, variants: variantsInput },
     );
 
     const variantErrors = userErrors(variantsData.productVariantsBulkCreate);
@@ -277,32 +357,27 @@ export async function provisionClones(
       throw new Error(`${product.title}: ${variantErrors.join("; ")}`);
     }
 
-    const cloneVariants =
+    const reliefVariants =
       variantsData.productVariantsBulkCreate.productVariants ?? [];
 
-    // Match clones back to originals by their option values.
+    // 4. Link the pairs in both directions, matching on the non-relief options.
     const metafields: Record<string, string>[] = [];
-    for (const original of unpaired) {
-      const key = original.selectedOptions
-        .map((o) => `${o.name}:${o.value}`)
-        .join("|");
-      const clone = cloneVariants.find(
-        (c: any) =>
-          c.selectedOptions
-            .map((o: any) => `${o.name}:${o.value}`)
-            .join("|") === key,
+    for (const original of taxed) {
+      const key = optionKey(original.selectedOptions);
+      const relief = reliefVariants.find(
+        (candidate: any) => optionKey(candidate.selectedOptions) === key,
       );
-      if (!clone) continue;
+      if (!relief) continue;
 
       metafields.push({
         ownerId: original.id,
         namespace: METAFIELD_NAMESPACE,
         key: PAIRED_VARIANT_KEY,
         type: "variant_reference",
-        value: clone.id,
+        value: relief.id,
       });
       metafields.push({
-        ownerId: clone.id,
+        ownerId: relief.id,
         namespace: METAFIELD_NAMESPACE,
         key: ORIGINAL_VARIANT_KEY,
         type: "variant_reference",
@@ -322,7 +397,7 @@ export async function provisionClones(
       }
     }
 
-    created.push({ product: product.title, variants: cloneVariants.length });
+    created.push({ product: product.title, variants: reliefVariants.length });
   }
 
   return created;
@@ -332,59 +407,44 @@ export async function provisionClones(
 // Drift check
 // ---------------------------------------------------------------------------
 
-const CLONE_VARIANTS_QUERY = `#graphql
-  query CloneVariants($query: String!, $first: Int!) {
-    products(first: $first, query: $query) {
-      nodes {
-        id
-        title
-        variants(first: 100) {
-          nodes {
-            id
-            title
-            price
-            taxable
-            original: metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${ORIGINAL_VARIANT_KEY}") {
-              reference {
-                ... on ProductVariant { id price }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
+/**
+ * Prices drift the moment somebody edits the original in admin. Nothing keeps
+ * the pair in step automatically — wire a products/update webhook to re-run
+ * this, or accept manual reconciliation.
+ */
 export async function checkDrift(admin: Admin, first = 50): Promise<DriftRow[]> {
   const data = await gql<{ products: { nodes: any[] } }>(
     admin,
-    CLONE_VARIANTS_QUERY,
-    { query: `tag:'${CLONE_TAG}'`, first },
+    ELIGIBLE_PRODUCTS_QUERY,
+    { query: `tag:'${ELIGIBILITY_TAG}'`, first },
   );
 
   const rows: DriftRow[] = [];
 
   for (const product of data.products.nodes) {
     for (const variant of product.variants.nodes) {
+      const isRelief =
+        reliefValueOf(variant.selectedOptions) === RELIEF_OPTION_YES;
+      if (!isRelief) continue;
+
       const original = variant.original?.reference ?? null;
       const expected = original ? netPrice(original.price) : null;
 
       let problem: string | null = null;
       if (!original) {
-        problem = "clone variant has no link back to an original";
+        problem = "relief variant has no link back to a taxed variant";
       } else if (variant.taxable) {
-        problem = "clone variant is still taxable — VAT will be charged";
+        problem = "relief variant is still taxable — VAT will be charged";
       } else if (expected !== variant.price) {
-        problem = `price drift: clone is ${variant.price}, should be ${expected}`;
+        problem = `price drift: relief variant is ${variant.price}, should be ${expected}`;
       }
 
       rows.push({
         productTitle: product.title,
         variantTitle: variant.title,
         originalPrice: original?.price ?? null,
-        clonePrice: variant.price,
-        expectedClonePrice: expected,
+        reliefPrice: variant.price,
+        expectedReliefPrice: expected,
         taxable: variant.taxable,
         problem,
       });

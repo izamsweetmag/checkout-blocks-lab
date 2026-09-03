@@ -25,8 +25,3 @@ scopes = "write_products,read_publications,write_publications"
 
 [auth]
 redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
-
-# Required by the CLI once the events spec is enabled for the org.
-# No subscriptions declared — the section just has to exist.
-[events]
-api_version = "2026-10"
