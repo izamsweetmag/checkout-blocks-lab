@@ -1,0 +1,206 @@
+{% comment %}
+  Renders product variant-picker
+
+  Accepts:
+  - product: {Object} product object.
+  - block: {Object} passing the block information.
+  - product_form_id: {String} Id of the product form to which the variant picker is associated.
+  - update_url: {Boolean} whether or not to update url when changing variants. If false, the url isn't updated. Default: true (optional).
+  Usage:
+  {% render 'product-variant-picker', product: product, block: block, product_form_id: product_form_id %}
+
+  ---------------------------------------------------------------------------
+  VAT RELIEF MODIFICATION
+
+  The "VAT relief" option must never be selectable here. Relief is claimed by
+  ticking the box on the CART page, which is what writes the buyer's
+  declaration onto the line. Picking the relief variant from this page produces
+  a net-priced line with no declaration on it — the checkout validation
+  function then blocks it, which is correct but is a dead end for the buyer.
+
+  The option is NOT removed from the DOM. Dawn matches the current variant by
+  comparing its option values positionally:
+
+      variant.options.every((option, i) => this.options[i] === option)
+
+  Removing one input shifts every index after it, `currentVariant` becomes
+  undefined, and the price and Add to cart button break. Instead the option is
+  rendered hidden and pinned to the taxed value, so matching still works and
+  the form always submits the taxed variant.
+
+  The pinned value is read from the taxed variant itself rather than being
+  hardcoded, so renaming the option values ("No" -> "Standard VAT") needs no
+  change here.
+{% endcomment %}
+
+{%- liquid
+  assign vat_option_name = 'VAT relief'
+
+  # If the page was opened on a relief variant (?variant=<relief id>), fall back
+  # to its taxed twin so the picker, the price and the form all agree.
+  assign taxed_variant = product.selected_or_first_available_variant
+  assign taxed_twin = taxed_variant.metafields.vat_relief.original_variant.value
+  if taxed_twin
+    assign taxed_variant = taxed_twin
+  endif
+-%}
+
+{%- unless product.has_only_default_variant -%}
+  {%- if block.settings.picker_type == 'button' -%}
+    <variant-radios
+      id="variant-radios-{{ section.id }}"
+      class="no-js-hidden"
+      data-section="{{ section.id }}"
+      data-url="{{ product.url }}"
+      {% if update_url == false %}
+        data-update-url="false"
+      {% endif %}
+      {{ block.shopify_attributes }}
+    >
+      {%- for option in product.options_with_values -%}
+        {%- if option.name == vat_option_name -%}
+          {%- comment -%}
+            Hidden but present: one checked radio carrying the taxed value, so
+            Dawn's positional matching still resolves the variant.
+          {%- endcomment -%}
+          <fieldset class="js product-form__input" style="display: none;" aria-hidden="true">
+            <legend class="form__label">{{ option.name }}</legend>
+            <input
+              type="radio"
+              id="{{ section.id }}-{{ option.position }}-vat-relief-locked"
+              name="{{ option.name }}-{{ option.position }}"
+              value="{{ taxed_variant.options[forloop.index0] | escape }}"
+              form="{{ product_form_id }}"
+              checked
+              tabindex="-1"
+            >
+            <label for="{{ section.id }}-{{ option.position }}-vat-relief-locked">
+              {{ taxed_variant.options[forloop.index0] }}
+            </label>
+          </fieldset>
+        {%- else -%}
+          <fieldset class="js product-form__input">
+            <legend class="form__label">{{ option.name }}</legend>
+            {% render 'product-variant-options', product: product, option: option, block: block %}
+          </fieldset>
+        {%- endif -%}
+      {%- endfor -%}
+      <script type="application/json">
+        {{ product.variants | json }}
+      </script>
+    </variant-radios>
+  {%- else -%}
+    <variant-selects
+      id="variant-selects-{{ section.id }}"
+      class="no-js-hidden"
+      data-section="{{ section.id }}"
+      data-url="{{ product.url }}"
+      {% if update_url == false %}
+        data-update-url="false"
+      {% endif %}
+      {{ block.shopify_attributes }}
+    >
+      {%- for option in product.options_with_values -%}
+        {%- if option.name == vat_option_name -%}
+          {%- comment -%}
+            Still a <select>, so it keeps its position in
+            querySelectorAll('select') — just hidden, with one option in it.
+          {%- endcomment -%}
+          <div class="product-form__input product-form__input--dropdown" style="display: none;" aria-hidden="true">
+            <select
+              id="Option-{{ section.id }}-{{ forloop.index0 }}"
+              class="select__select"
+              name="options[{{ option.name | escape }}]"
+              form="{{ product_form_id }}"
+              tabindex="-1"
+            >
+              <option value="{{ taxed_variant.options[forloop.index0] | escape }}" selected="selected">
+                {{ taxed_variant.options[forloop.index0] }}
+              </option>
+            </select>
+          </div>
+        {%- else -%}
+          <div class="product-form__input product-form__input--dropdown">
+            <label class="form__label" for="Option-{{ section.id }}-{{ forloop.index0 }}">
+              {{ option.name }}
+            </label>
+            <div class="select">
+              <select
+                id="Option-{{ section.id }}-{{ forloop.index0 }}"
+                class="select__select"
+                name="options[{{ option.name | escape }}]"
+                form="{{ product_form_id }}"
+              >
+                {% render 'product-variant-options', product: product, option: option, block: block %}
+              </select>
+              {% render 'icon-caret' %}
+            </div>
+          </div>
+        {%- endif -%}
+      {%- endfor -%}
+
+      <script type="application/json">
+        {{ product.variants | json }}
+      </script>
+    </variant-selects>
+  {%- endif -%}
+{%- endunless -%}
+
+<noscript class="product-form__noscript-wrapper-{{ section.id }}">
+  <div class="product-form__input{% if product.has_only_default_variant %} hidden{% endif %}">
+    <label class="form__label" for="Variants-{{ section.id }}">
+      {{- 'products.product.product_variants' | t -}}
+    </label>
+    <div class="select">
+      <select
+        name="id"
+        id="Variants-{{ section.id }}"
+        class="select__select"
+        form="{{ product_form_id }}"
+      >
+        {%- for variant in product.variants -%}
+          {%- comment -%}
+            No-JS fallback: never offer the relief variants here either.
+          {%- endcomment -%}
+          {%- if variant.metafields.vat_relief.original_variant != blank -%}
+            {%- continue -%}
+          {%- endif -%}
+          <option
+            {% if variant == taxed_variant %}
+              selected="selected"
+            {% endif %}
+            {% if variant.available == false %}
+              disabled
+            {% endif %}
+            value="{{ variant.id }}"
+          >
+            {%- liquid
+              echo variant.title
+              echo variant.price | money | strip_html | prepend: ' - '
+              if variant.available == false
+                echo 'products.product.sold_out' | t | prepend: ' - '
+              endif
+              if variant.quantity_rule.increment > 1
+                echo 'products.product.quantity.multiples_of' | t: quantity: variant.quantity_rule.increment | prepend: ' - '
+              endif
+              if variant.quantity_rule.min > 1
+                echo 'products.product.quantity.minimum_of' | t: quantity: variant.quantity_rule.min | prepend: ' - '
+              endif
+              if variant.quantity_rule.max != null
+                echo 'products.product.quantity.maximum_of' | t: quantity: variant.quantity_rule.max | prepend: ' - '
+              endif
+              # TODO: enable theme-check once `item_count_for_variant` is accepted as valid filter
+              # theme-check-disable
+              assign cart_quantity = cart | item_count_for_variant: variant.id
+              # theme-check-enable
+              if cart_quantity > 0
+                echo 'products.product.quantity.in_cart_html' | t: quantity: cart_quantity | prepend: ' - '
+              endif
+            -%}
+          </option>
+        {%- endfor -%}
+      </select>
+      {% render 'icon-caret' %}
+    </div>
+  </div>
+</noscript>

@@ -1,0 +1,20 @@
+{%- comment -%}
+  Replacement for Shopify's dynamic checkout button.
+
+  Render it INSIDE the product form, where `{{ form | payment_button }}` used
+  to be — usually snippets/buy-buttons.liquid:
+
+    {%- comment -%} {{ form | payment_button }} {%- endcomment -%}
+    {% render 'buy-now-to-cart' %}
+
+  Requires buy-now-to-cart.js on the page.
+{%- endcomment -%}
+
+<button
+  type="button"
+  class="button button--secondary buy-now-to-cart"
+  data-buy-now-to-cart
+>
+  <span data-buy-now-label>Buy it now</span>
+  <span data-buy-now-busy hidden>Adding&hellip;</span>
+</button>

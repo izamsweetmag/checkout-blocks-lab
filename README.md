@@ -44,7 +44,7 @@ Typechecks clean: `cd extensions/checkout-block && npx tsc --noEmit`.
 ### `extensions/vat-relief-discount` — discount function
 This is Betsy's suggestion, implemented so you can run it and look at the result.
 
-- Reads the cart line property `_vat_relief` (written by the cart-page checkbox).
+- Reads the cart line property `VAT relief` (written by the cart-page checkbox).
 - Cross-checks the product carries the tag `VAT Exempt Opt` — the line property
   is buyer-editable, so it can't be the only gate.
 - Applies a **fixed-amount** product discount equal to the VAT element of that

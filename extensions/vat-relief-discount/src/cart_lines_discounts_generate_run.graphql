@@ -9,7 +9,7 @@ query CartInput {
         }
       }
       # Line item property written by the cart-page checkbox.
-      vatRelief: attribute(key: "_vat_relief") {
+      vatRelief: attribute(key: "VAT relief") {
         value
       }
       merchandise {

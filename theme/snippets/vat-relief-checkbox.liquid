@@ -12,9 +12,10 @@
     - original variant (taxed)      -> unticked box, ticking swaps to the clone
     - clone variant (zero-rated)    -> ticked box, unticking swaps back
 
-  The buyer's declaration is recorded as the line property `_vat_relief` so the
-  order carries evidence of the self-declaration, which is the part HMRC cares
-  about. The property does NOT drive the tax — the merchandise does.
+  The buyer's declaration is recorded as the visible line property "VAT relief"
+  (plus a hidden `_vat_relief_declared_at` timestamp) so the order carries
+  evidence of the self-declaration, which is the part HMRC cares about. The
+  property does NOT drive the tax — the merchandise does.
 {%- endcomment -%}
 
 {%- liquid

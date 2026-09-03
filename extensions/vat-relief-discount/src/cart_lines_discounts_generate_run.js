@@ -16,7 +16,7 @@ const VAT_RATE = 0.2;
 const VAT_ELEMENT_OF_GROSS = VAT_RATE / (1 + VAT_RATE); // 0.166666…
 
 const ELIGIBILITY_TAG = 'VAT Exempt Opt';
-const DECLARATION_ATTRIBUTE = '_vat_relief';
+const DECLARATION_ATTRIBUTE = 'VAT relief';
 
 /**
  * @typedef {import("../generated/api").CartInput} RunInput
@@ -42,9 +42,10 @@ export function cartLinesDiscountsGenerateRun(input) {
   const candidates = [];
 
   for (const line of lines) {
-    // 1. Buyer ticked the box on the cart page.
-    const declared = line.vatRelief?.value === 'true';
-    if (!declared) continue;
+    // 1. Buyer ticked the box on the cart page. Any non-empty value counts —
+    //    the property carries declaration text, not a boolean flag.
+    const declared = line.vatRelief?.value;
+    if (!declared || declared.trim() === '') continue;
 
     // 2. The product is actually tagged as VAT-relief eligible.
     //    Never trust the line property on its own — it is buyer-editable.

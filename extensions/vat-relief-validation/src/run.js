@@ -49,10 +49,14 @@ export function run(input) {
     // buyer knows which line to go and fix.
     const productTitle = merchandise.product?.title ?? 'this item';
 
+    // NOTE: this target runs on cart writes as well as at checkout, so the
+    // wording has to make sense when the buyer has not reached checkout yet —
+    // e.g. when they pick the relief variant on the product page and hit
+    // Add to cart.
     errors.push({
       localizedMessage:
-        `Please confirm your VAT relief eligibility for ${productTitle} ` +
-        `in your cart before continuing to checkout.`,
+        `VAT relief for ${productTitle} must be confirmed in your cart. ` +
+        `Please tick the VAT relief box on the cart page.`,
       target: '$.cart',
     });
   }

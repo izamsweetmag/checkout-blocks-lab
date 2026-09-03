@@ -3,6 +3,7 @@ api_version = "2026-07"
 [[extensions]]
 name = "t:name"
 handle = "vat-relief-validation"
+uid = "55cfeb38-234a-170f-9ea2-cf6f4160189660be4d1a"
 type = "function"
 description = "t:description"
 

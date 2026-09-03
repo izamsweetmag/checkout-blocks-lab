@@ -5,14 +5,19 @@
  *   taxed variant (gross price, taxable)  <->  clone variant (net price, taxable: false)
  *
  * Uses /cart/change.js so the line's other properties survive the swap. The
- * declaration itself is written as the `_vat_relief` line property.
+ * The declaration is written as the VISIBLE line property "VAT relief", so it
+ * shows on the order in admin and on the confirmation email without anyone
+ * having to go digging. The timestamp beside it is hidden (leading underscore)
+ * because it is for audit, not for the buyer to read.
  *
  * Deliberately does a full re-render of the cart section afterwards rather than
  * patching the DOM — the totals, the VAT line and the checkbox state all move
  * together and getting that wrong is how you ship a cart that lies about tax.
  */
 (function () {
-  const DECLARATION_PROPERTY = '_vat_relief';
+  const DECLARATION_PROPERTY = 'VAT relief';
+  const DECLARATION_VALUE = 'Customer declared eligibility';
+  const DECLARED_AT_PROPERTY = '_vat_relief_declared_at';
   const CART_SECTION_ID = 'main-cart-items'; // rename to your theme's cart section
 
   async function postJSON(url, body) {
@@ -51,12 +56,12 @@
 
     const properties = Object.assign({}, current.properties || {});
     if (relieving) {
-      properties[DECLARATION_PROPERTY] = 'true';
+      properties[DECLARATION_PROPERTY] = DECLARATION_VALUE;
       // Timestamp the declaration — this is the audit trail, keep it.
-      properties['_vat_relief_declared_at'] = new Date().toISOString();
+      properties[DECLARED_AT_PROPERTY] = new Date().toISOString();
     } else {
       delete properties[DECLARATION_PROPERTY];
-      delete properties['_vat_relief_declared_at'];
+      delete properties[DECLARED_AT_PROPERTY];
     }
 
     // Remove first, then add. Doing it in this order avoids briefly holding

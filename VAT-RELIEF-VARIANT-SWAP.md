@@ -2,7 +2,7 @@
 
 The second of the two approaches. The discount function in
 `extensions/vat-relief-discount` is untouched; run whichever you want, they do
-not interfere (the discount only fires on lines carrying `_vat_relief`, and in
+not interfere (the discount only fires on lines carrying `VAT relief`, and in
 this approach the relieved line is a different, non-taxable variant, so the
 discount is a no-op on it).
 
@@ -91,12 +91,13 @@ Anything grouping by product needs to merge the pair.
 **The clone is reachable by URL.** It must be published to be purchasable, so a
 determined buyer can find and buy the net-priced variant without ever ticking
 the declaration box. Mitigations: exclude the clone tag from search and
-collections in the theme, and treat `_vat_relief` on the line as the compliance
+collections in the theme, and treat `VAT relief` on the line as the compliance
 record. It reduces the risk, it does not remove it.
 
 **The declaration lives in a line property, not in the tax engine.** Shopify has
 no concept of "this line is zero-rated because the buyer declared eligibility".
-The property `_vat_relief` plus `_vat_relief_declared_at` is your audit trail.
+The visible property `VAT relief` plus the hidden `_vat_relief_declared_at`
+timestamp is your audit trail.
 Keep it on the order and make sure it reaches whatever produces the paper
 invoice.
 
