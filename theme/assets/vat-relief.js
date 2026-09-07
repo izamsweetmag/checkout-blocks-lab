@@ -1,8 +1,9 @@
 /**
  * VAT relief line swap.
  *
- * Ticking the box replaces the cart line with its paired variant:
- *   taxed variant (gross price, taxable)  <->  clone variant (net price, taxable: false)
+ * Ticking the box replaces the cart line with its paired variant on the SAME
+ * product:
+ *   taxed variant (gross, taxable: true)  <->  relief variant (net, taxable: false)
  *
  * Uses /cart/change.js so the line's other properties survive the swap. The
  * The declaration is written as the VISIBLE line property "VAT relief declaration",
@@ -24,6 +25,13 @@
   const LEGACY_DECLARATION_PROPERTIES = ['VAT relief', '_vat_relief'];
   const DECLARATION_VALUE = 'Customer declared eligibility';
   const DECLARED_AT_PROPERTY = '_vat_relief_declared_at';
+  // Cart-level mirror of the same declaration. Line properties become line item
+  // properties on the order; cart attributes become the order's custom
+  // attributes, which is the summary an order-level audit or an export reads
+  // without having to walk every line.
+  const CART_DECLARATION_ATTRIBUTE = 'VAT relief declaration';
+  const CART_DECLARED_AT_ATTRIBUTE = '_vat_relief_declared_at';
+  const CART_DECLARED_LINES_ATTRIBUTE = '_vat_relief_lines';
   const CART_SECTION_ID = 'main-cart-items'; // rename to your theme's cart section
 
   async function postJSON(url, body) {
@@ -44,10 +52,51 @@
     return response.json();
   }
 
-  async function getLine(lineKey) {
+  async function getCart() {
     const response = await fetch('/cart.js', {headers: {Accept: 'application/json'}});
-    const cart = await response.json();
+    return response.json();
+  }
+
+  async function getLine(lineKey) {
+    const cart = await getCart();
     return cart.items.find((item) => item.key === lineKey) || null;
+  }
+
+  /**
+   * Rebuilds the cart-level attributes from what is actually in the cart.
+   *
+   * Derived, never incremented: the buyer can empty the cart, remove the only
+   * relieved line, or have a stale attribute left over from an earlier session,
+   * and an attribute claiming a declaration that no line carries is worse than
+   * no attribute at all. Shopify deletes an attribute set to the empty string,
+   * so the no-declaration case clears rather than writing 'none'.
+   *
+   * The timestamp is the EARLIEST declaration in the cart — the moment the
+   * buyer first declared, which is the one that belongs on the record.
+   */
+  async function syncCartAttributes() {
+    const cart = await getCart();
+
+    const timestamps = cart.items
+      .filter((item) => item.properties && item.properties[DECLARATION_PROPERTY])
+      .map((item) => item.properties[DECLARED_AT_PROPERTY])
+      .filter(Boolean)
+      .sort();
+
+    const declaredLines = cart.items.filter(
+      (item) => item.properties && item.properties[DECLARATION_PROPERTY]
+    ).length;
+
+    const attributes = {};
+    attributes[CART_DECLARATION_ATTRIBUTE] = declaredLines
+      ? DECLARATION_VALUE
+      : '';
+    attributes[CART_DECLARED_AT_ATTRIBUTE] = timestamps[0] || '';
+    attributes[CART_DECLARED_LINES_ATTRIBUTE] = declaredLines
+      ? String(declaredLines)
+      : '';
+
+    await postJSON('/cart/update.js', {attributes});
   }
 
   async function swapLine(input) {
@@ -87,6 +136,8 @@
       ],
       sections: CART_SECTION_ID,
     });
+
+    await syncCartAttributes();
   }
 
   function setBusy(container, busy) {

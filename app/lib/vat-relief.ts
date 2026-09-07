@@ -13,7 +13,33 @@
 
 export const VAT_RATE = 0.2;
 
-export const ELIGIBILITY_TAG = "VAT Exempt Opt";
+/**
+ * Eligibility is a PRODUCT metafield, not a tag.
+ *
+ * A tag is a free-text string anybody with product-edit access can typo, and
+ * it carries no type. A boolean definition can only be true or false, shows as
+ * a checkbox in admin, and can be reported on. This is the metafield ResMed
+ * created: `custom.vat_relief_eligible`.
+ *
+ * Filtering products by it in the Admin API needs the definition to have the
+ * `adminFilterable` capability. Without it Shopify does NOT error — it ignores
+ * the filter and returns every product. `isEligibleProductValue` therefore
+ * re-checks the value on every product we get back; see the note in
+ * vat-relief.server.ts.
+ */
+export const ELIGIBILITY_NAMESPACE = "custom";
+export const ELIGIBILITY_KEY = "vat_relief_eligible";
+export const ELIGIBILITY_METAFIELD = `${ELIGIBILITY_NAMESPACE}.${ELIGIBILITY_KEY}`;
+
+/**
+ * True only for an explicit true. Accepts the string form as well as the
+ * boolean type, because a definition typed `single_line_text_field` holding
+ * "true" is a mistake we would rather tolerate than silently skip.
+ */
+export function isEligibleProductValue(raw: string | null | undefined): boolean {
+  if (raw == null) return false;
+  return raw.trim().toLowerCase() === "true";
+}
 
 /**
  * The option added to every eligible product.
@@ -65,7 +91,24 @@ export interface EligibleProduct {
   status: string;
   options: { name: string; values: string[] }[];
   hasReliefOption: boolean;
+  /** Raw value of custom.vat_relief_eligible, for display. */
+  eligibilityValue: string | null;
+  eligible: boolean;
   variants: EligibleVariant[];
+}
+
+/**
+ * The result of asking for eligible products.
+ *
+ * `filterHonored` is false when Shopify ignored the metafield filter — the
+ * symptom of a definition without the adminFilterable capability. The products
+ * are still correct (we re-filter in code); the flag exists so the admin UI can
+ * say why the query scanned the whole catalogue.
+ */
+export interface EligibleProductsResult {
+  products: EligibleProduct[];
+  scanned: number;
+  filterHonored: boolean;
 }
 
 export interface ProvisionPlanRow {

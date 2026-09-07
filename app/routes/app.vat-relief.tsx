@@ -11,7 +11,7 @@ import { authenticate } from "../shopify.server";
 // talks to the Admin API stays in the .server module so it never reaches the
 // client bundle.
 import {
-  ELIGIBILITY_TAG,
+  ELIGIBILITY_METAFIELD,
   VAT_RATE,
   buildProvisionPlan,
   type DriftRow,
@@ -27,11 +27,11 @@ import {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  const products = await listEligibleProducts(admin);
+  const { products, scanned, filterHonored } = await listEligibleProducts(admin);
   const plan = buildProvisionPlan(products);
   const drift = await checkDrift(admin);
 
-  return { plan, drift };
+  return { plan, drift, eligibleCount: products.length, scanned, filterHonored };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -46,7 +46,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     if (intent === "provision") {
-      const products = await listEligibleProducts(admin);
+      const { products } = await listEligibleProducts(admin);
       const created = await provisionReliefVariants(admin, products);
       if (!created.length) {
         return { ok: true, message: "Nothing to do — every eligible variant is already paired." };
@@ -66,7 +66,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function VatRelief() {
-  const { plan, drift } = useLoaderData<typeof loader>();
+  const { plan, drift, eligibleCount, scanned, filterHonored } =
+    useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const busy = fetcher.state !== "idle";
 
@@ -76,7 +77,9 @@ export default function VatRelief() {
     <s-page heading="VAT relief — zero-rated variant swap">
       <s-section heading="What this does">
         <s-paragraph>
-          For every product tagged <s-text type="strong">{ELIGIBILITY_TAG}</s-text>, this adds a
+          For every product with the metafield{" "}
+          <s-text type="strong">{ELIGIBILITY_METAFIELD}</s-text> set to{" "}
+          <s-text type="strong">true</s-text>, this adds a
           “VAT relief: No / Yes” option and creates the Yes variant non-taxable and
           priced ex-VAT (gross ÷ {(1 + VAT_RATE).toFixed(2)}). The cart-page checkbox swaps the line
           between the two, so the order carries a genuine £0.00 VAT line instead
@@ -91,7 +94,17 @@ export default function VatRelief() {
 
       <s-section heading="1. Metafield definitions">
         <s-paragraph>
-          Creates the storefront-readable variant pairing metafields. Safe to re-run.
+          Creates the storefront-readable variant pairing metafields, and makes{" "}
+          <s-text type="strong">{ELIGIBILITY_METAFIELD}</s-text> filterable in the
+          Admin API. Safe to re-run.
+        </s-paragraph>
+        <s-paragraph>
+          The filterable part is not cosmetic. Shopify does not reject a query
+          filtering on a metafield definition that lacks the{" "}
+          <s-text type="strong">adminFilterable</s-text> capability — it ignores the
+          filter and returns every product. This page re-checks the metafield on
+          each product it gets back, so provisioning cannot run away with the
+          catalogue either way.
         </s-paragraph>
         <fetcher.Form method="post">
           <input type="hidden" name="intent" value="definitions" />
@@ -102,8 +115,19 @@ export default function VatRelief() {
       </s-section>
 
       <s-section heading="2. Plan">
+        {filterHonored ? null : (
+          <s-banner tone="warning">
+            <s-paragraph>
+              Shopify ignored the metafield filter: it returned {scanned}{" "}
+              product(s), only {eligibleCount} of which are marked eligible. The
+              definition is not admin-filterable — run step 1. The plan below is
+              still correct; it was filtered here rather than by Shopify.
+            </s-paragraph>
+          </s-banner>
+        )}
         <s-paragraph>
-          {plan.length} eligible variant(s). Review the numbers before provisioning.
+          {eligibleCount} eligible product(s), {plan.length} eligible variant(s).
+          Review the numbers before provisioning.
         </s-paragraph>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>

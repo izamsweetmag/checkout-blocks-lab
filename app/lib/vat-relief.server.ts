@@ -25,17 +25,21 @@
  */
 
 import {
-  ELIGIBILITY_TAG,
+  ELIGIBILITY_KEY,
+  ELIGIBILITY_METAFIELD,
+  ELIGIBILITY_NAMESPACE,
   METAFIELD_NAMESPACE,
   ORIGINAL_VARIANT_KEY,
   PAIRED_VARIANT_KEY,
   RELIEF_OPTION_NAME,
   RELIEF_OPTION_NO,
   RELIEF_OPTION_YES,
+  isEligibleProductValue,
   netPrice,
   reliefValueOf,
   type DriftRow,
   type EligibleProduct,
+  type EligibleProductsResult,
   type SelectedOption,
 } from "./vat-relief";
 
@@ -85,6 +89,82 @@ const METAFIELD_DEFINITION_CREATE = `#graphql
   }
 `;
 
+const METAFIELD_DEFINITION_UPDATE = `#graphql
+  mutation UpdateVatReliefDefinition($definition: MetafieldDefinitionUpdateInput!) {
+    metafieldDefinitionUpdate(definition: $definition) {
+      updatedDefinition { id key }
+      userErrors { code message }
+    }
+  }
+`;
+
+/**
+ * Makes `custom.vat_relief_eligible` filterable in the Admin API.
+ *
+ * This is the one that matters. Shopify does not reject a query that filters on
+ * a metafield without the `adminFilterable` capability — it silently returns
+ * EVERY product. Provisioning off that result would add a "VAT relief" option
+ * and a zero-rated variant to the entire catalogue.
+ *
+ * ResMed created the definition by hand in admin, so the usual path here is
+ * TAKEN -> update the capability on the existing definition. Creating it is the
+ * fallback for a fresh store.
+ *
+ * Failure is reported, not thrown: the caller still gets working (if slower)
+ * results because listEligibleProducts re-checks the value in code.
+ */
+async function ensureEligibilityFilterable(admin: Admin): Promise<string> {
+  const identity = {
+    namespace: ELIGIBILITY_NAMESPACE,
+    key: ELIGIBILITY_KEY,
+    ownerType: "PRODUCT",
+  };
+  const capabilities = { adminFilterable: { enabled: true } };
+  // The cart snippet reads this metafield in Liquid to stop offering relief on a
+  // product that has been de-flagged since its variants were provisioned, and
+  // Liquid only sees a definition with storefront read access.
+  const access = { storefront: "PUBLIC_READ" };
+
+  const created = await gql<{
+    metafieldDefinitionCreate: { userErrors: { code: string; message: string }[] };
+  }>(admin, METAFIELD_DEFINITION_CREATE, {
+    definition: {
+      ...identity,
+      name: "VAT relief eligible",
+      description:
+        "Products that qualify for VAT relief under HMRC VAT Notice 701/7.",
+      type: "boolean",
+      capabilities,
+      access,
+    },
+  });
+
+  const createErrors = created.metafieldDefinitionCreate.userErrors;
+  if (!createErrors.length) {
+    return `${ELIGIBILITY_METAFIELD} created, filterable and storefront-readable`;
+  }
+  if (!createErrors.every((e) => e.code === "TAKEN")) {
+    return `${ELIGIBILITY_METAFIELD} NOT filterable: ${createErrors
+      .map((e) => e.message)
+      .join("; ")}`;
+  }
+
+  const updated = await gql<{
+    metafieldDefinitionUpdate: { userErrors: { code: string; message: string }[] };
+  }>(admin, METAFIELD_DEFINITION_UPDATE, {
+    definition: { ...identity, capabilities, access },
+  });
+
+  const updateErrors = updated.metafieldDefinitionUpdate.userErrors;
+  if (updateErrors.length) {
+    return `${ELIGIBILITY_METAFIELD} exists but could not be made filterable (${updateErrors
+      .map((e) => e.message)
+      .join("; ")}) — the product query will scan the catalogue instead`;
+  }
+
+  return `${ELIGIBILITY_METAFIELD} set filterable and storefront-readable`;
+}
+
 /**
  * The theme needs to read the pairing from Liquid, so the definition must be
  * storefront-readable. Re-running this is safe: a TAKEN code is ignored.
@@ -124,6 +204,8 @@ export async function ensureMetafieldDefinitions(admin: Admin) {
     results.push(definition.key);
   }
 
+  results.push(await ensureEligibilityFilterable(admin));
+
   return results;
 }
 
@@ -137,6 +219,9 @@ const PRODUCT_FIELDS = `
   handle
   status
   options { name values }
+  eligibility: metafield(namespace: "${ELIGIBILITY_NAMESPACE}", key: "${ELIGIBILITY_KEY}") {
+    value
+  }
   variants(first: 100) {
     nodes {
       id
@@ -165,6 +250,9 @@ const ELIGIBLE_PRODUCTS_QUERY = `#graphql
   }
 `;
 
+/** `metafields.custom.vat_relief_eligible:true` */
+const ELIGIBILITY_QUERY = `metafields.${ELIGIBILITY_METAFIELD}:true`;
+
 const SINGLE_PRODUCT_QUERY = `#graphql
   query VatReliefProduct($id: ID!) {
     product(id: $id) { ${PRODUCT_FIELDS} }
@@ -172,12 +260,16 @@ const SINGLE_PRODUCT_QUERY = `#graphql
 `;
 
 function mapProduct(product: any): EligibleProduct {
+  const eligibilityValue = product.eligibility?.value ?? null;
+
   return {
     id: product.id,
     title: product.title,
     handle: product.handle,
     status: product.status,
     options: product.options,
+    eligibilityValue,
+    eligible: isEligibleProductValue(eligibilityValue),
     hasReliefOption: (product.options ?? []).some(
       (option: any) => option.name === RELIEF_OPTION_NAME,
     ),
@@ -196,17 +288,32 @@ function mapProduct(product: any): EligibleProduct {
   };
 }
 
+/**
+ * Products carrying custom.vat_relief_eligible = true.
+ *
+ * Two passes on purpose. The `metafields.` filter is the fast path, but Shopify
+ * ignores it when the definition is not adminFilterable and hands back the
+ * whole catalogue with no error, so the value is checked again here. Never
+ * feed the raw query result into provisioning.
+ */
 export async function listEligibleProducts(
   admin: Admin,
-  first = 50,
-): Promise<EligibleProduct[]> {
+  first = 250,
+): Promise<EligibleProductsResult> {
   const data = await gql<{ products: { nodes: any[] } }>(
     admin,
     ELIGIBLE_PRODUCTS_QUERY,
-    { query: `tag:'${ELIGIBILITY_TAG}'`, first },
+    { query: ELIGIBILITY_QUERY, first },
   );
 
-  return data.products.nodes.map(mapProduct);
+  const scanned = data.products.nodes.length;
+  const products = data.products.nodes.map(mapProduct).filter((p) => p.eligible);
+
+  return {
+    products,
+    scanned,
+    filterHonored: products.length === scanned,
+  };
 }
 
 async function readProduct(admin: Admin, id: string): Promise<EligibleProduct> {
@@ -285,6 +392,15 @@ export async function provisionReliefVariants(
   const created: { product: string; variants: number }[] = [];
 
   for (const initial of products) {
+    // Last line of defence. Provisioning mutates the original product, so an
+    // ineligible product reaching this loop — a caller passing the unfiltered
+    // query result, say — is not something to recover from quietly.
+    if (!initial.eligible) {
+      throw new Error(
+        `${initial.title} is not marked ${ELIGIBILITY_METAFIELD} = true — refusing to provision`,
+      );
+    }
+
     // 1. Add the option if the product doesn't have it yet. LEAVE_AS_IS updates
     //    existing variants to carry the first value ("No") without creating any.
     if (!initial.hasReliefOption) {
@@ -412,16 +528,18 @@ export async function provisionReliefVariants(
  * the pair in step automatically — wire a products/update webhook to re-run
  * this, or accept manual reconciliation.
  */
-export async function checkDrift(admin: Admin, first = 50): Promise<DriftRow[]> {
+export async function checkDrift(admin: Admin, first = 250): Promise<DriftRow[]> {
   const data = await gql<{ products: { nodes: any[] } }>(
     admin,
     ELIGIBLE_PRODUCTS_QUERY,
-    { query: `tag:'${ELIGIBILITY_TAG}'`, first },
+    { query: ELIGIBILITY_QUERY, first },
   );
 
   const rows: DriftRow[] = [];
 
   for (const product of data.products.nodes) {
+    if (!isEligibleProductValue(product.eligibility?.value)) continue;
+
     for (const variant of product.variants.nodes) {
       const isRelief =
         reliefValueOf(variant.selectedOptions) === RELIEF_OPTION_YES;

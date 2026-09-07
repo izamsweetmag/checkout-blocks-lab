@@ -1,0 +1,32 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "VAT relief confirmation"
+handle = "vat-relief-banner"
+uid = "164e7797-0c73-0640-752b-3243057eba6c375a6406"
+type = "ui_extension"
+
+  [extensions.capabilities]
+  api_access = false
+  block_progress = false
+  network_access = false
+
+  # Dynamic block: the merchant drops it wherever it belongs in the checkout
+  # editor — under the order summary is the obvious place.
+  [[extensions.targeting]]
+  module = "./src/VatReliefConfirmation.tsx"
+  target = "purchase.checkout.block.render"
+
+  [extensions.settings]
+
+    [[extensions.settings.fields]]
+    key = "heading"
+    type = "single_line_text_field"
+    name = "Banner heading"
+    description = "Shown only when a cart line carries a VAT relief declaration"
+
+    [[extensions.settings.fields]]
+    key = "body"
+    type = "multi_line_text_field"
+    name = "Declaration wording"
+    description = "The eligibility declaration read back to the buyer. Legal should own this copy."

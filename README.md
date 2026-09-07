@@ -53,6 +53,26 @@ This is Betsy's suggestion, implemented so you can run it and look at the result
 Register it in the admin as an **automatic product discount** after
 `shopify app deploy`, then it runs on every cart.
 
+> This extension still gates on the **tag** `VAT Exempt Opt`. The variant-swap
+> approach moved to the product metafield `custom.vat_relief_eligible`; this one
+> was left as it was because it is the comparison exhibit, not the candidate.
+> If you demo both on the same store, the eligible products need the tag *and*
+> the metafield.
+
+### `extensions/vat-relief-banner` — checkout confirmation banner
+Betsy's step 6. A dynamic block (`purchase.checkout.block.render`) that reads the
+`VAT relief declaration` attribute off the cart lines and reads the declaration
+back to the buyer, naming the lines it applies to and the time it was made.
+Renders nothing when no line carries a declaration. No input, nothing the buyer
+can change: by checkout the price is already net and the merchandise is already
+non-taxable.
+
+### `extensions/vat-relief-validation` — checkout validation function
+Not on Betsy's list, and the reason the scheme is enforceable rather than merely
+inconvenient to bypass. Blocks checkout on any line whose variant is a
+zero-rated counterpart but which carries no `VAT relief declaration` attribute —
+i.e. someone who reached the net-priced variant without ticking the box.
+
 ## Before you run it: the two things this test will show
 
 **1. "20% VAT deduction" is the wrong number.**
@@ -110,6 +130,9 @@ invoice correct. The cost is variant/inventory duplication — the two variants
 have separate inventory items, so stock has to be synced. That trade is worth
 putting in front of ResMed alongside the discount demo.
 
-**This is now built too** — see [VAT-RELIEF-VARIANT-SWAP.md](./VAT-RELIEF-VARIANT-SWAP.md).
-Admin UI at `/app/vat-relief`, theme files in `theme/`. It does not touch
+**This is now built too, and it is what ResMed asked to evaluate** — see
+[VAT-RELIEF-VARIANT-SWAP.md](./VAT-RELIEF-VARIANT-SWAP.md). Admin UI at
+`/app/vat-relief`, theme files in `theme/`. Eligibility is the product metafield
+`custom.vat_relief_eligible`. Both variants live on the same product, so nothing
+extra appears in the catalogue. It does not touch
 `extensions/vat-relief-discount`, so both can be tested independently.

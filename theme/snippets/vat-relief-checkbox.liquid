@@ -9,8 +9,16 @@
   safe to call for every line.
 
   Two states:
-    - original variant (taxed)      -> unticked box, ticking swaps to the clone
-    - clone variant (zero-rated)    -> ticked box, unticking swaps back
+    - standard variant (taxed)       -> unticked box, ticking swaps to the
+                                        zero-rated variant of the same product
+    - relief variant (zero-rated)    -> ticked box, unticking swaps back
+
+  Eligibility is the product metafield custom.vat_relief_eligible. The pairing
+  metafields alone would be enough to render the box, but a product that has
+  been de-flagged keeps its already-provisioned pair, and the box must stop
+  offering relief the moment the flag goes false. Checked explicitly against
+  false rather than "not true", so a missing or unreadable metafield leaves an
+  already-paired line working instead of silently killing the feature.
 
   The buyer's declaration is recorded as the visible line property
   "VAT relief declaration"
@@ -23,6 +31,7 @@
   assign variant = line_item.variant
   assign paired = variant.metafields.vat_relief.paired_variant.value
   assign original = variant.metafields.vat_relief.original_variant.value
+  assign eligibility = line_item.product.metafields.custom.vat_relief_eligible
 
   if original
     assign is_relieved = true
@@ -32,6 +41,12 @@
     assign swap_target = paired.id
   else
     assign swap_target = blank
+  endif
+
+  if eligibility
+    if eligibility.value == false or eligibility.value == 'false'
+      assign swap_target = blank
+    endif
   endif
 -%}
 
