@@ -516,7 +516,7 @@
             <span class="order-list__item-variant">{{ line.selling_plan_allocation.selling_plan.name }}</span><br/>
           {% endif %}
 
-          {%- assign vat_relief_note = line.properties['VAT relief'] -%}
+          {%- assign vat_relief_note = line.properties['VAT relief declaration'] -%}
           {%- if vat_relief_note != blank -%}
             {%- assign vat_gross = line.final_line_price | times: 6 | divided_by: 5 -%}
             {%- assign vat_removed = vat_gross | minus: line.final_line_price -%}
@@ -527,7 +527,7 @@
               </span>
             </p>
             <div class="order-list__item-property">
-              <dt>VAT relief:</dt>
+              <dt>VAT relief declaration:</dt>
               <dd>{{ vat_relief_note }}</dd>
             </div>
           {%- endif -%}
@@ -558,7 +558,7 @@
           {% endif %}
           {% if line.original_line_price != line.final_line_price %}
             <del class="order-list__item-original-price">{{ line.original_line_price | money }}</del>
-          {% elsif line.properties['VAT relief'] != blank %}
+          {% elsif line.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = line.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -870,7 +870,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -987,7 +987,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -1230,7 +1230,7 @@
             <span class="order-list__item-variant">{{ line.selling_plan_allocation.selling_plan.name }}</span><br/>
           {% endif %}
 
-          {%- assign vat_relief_note = line.properties['VAT relief'] -%}
+          {%- assign vat_relief_note = line.properties['VAT relief declaration'] -%}
           {%- if vat_relief_note != blank -%}
             {%- assign vat_gross = line.final_line_price | times: 6 | divided_by: 5 -%}
             {%- assign vat_removed = vat_gross | minus: line.final_line_price -%}
@@ -1241,7 +1241,7 @@
               </span>
             </p>
             <div class="order-list__item-property">
-              <dt>VAT relief:</dt>
+              <dt>VAT relief declaration:</dt>
               <dd>{{ vat_relief_note }}</dd>
             </div>
           {%- endif -%}
@@ -1272,7 +1272,7 @@
           {% endif %}
           {% if line.original_line_price != line.final_line_price %}
             <del class="order-list__item-original-price">{{ line.original_line_price | money }}</del>
-          {% elsif line.properties['VAT relief'] != blank %}
+          {% elsif line.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = line.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -1582,7 +1582,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -1699,7 +1699,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -1926,7 +1926,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -2043,7 +2043,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -2246,7 +2246,7 @@
             <span class="order-list__item-variant">{{ component.selling_plan_allocation.selling_plan.name }}</span><br/>
           {% endif %}
 
-          {%- assign vat_relief_note = component.properties['VAT relief'] -%}
+          {%- assign vat_relief_note = component.properties['VAT relief declaration'] -%}
           {%- if vat_relief_note != blank -%}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             {%- assign vat_removed = vat_gross | minus: component.final_line_price -%}
@@ -2257,7 +2257,7 @@
               </span>
             </p>
             <div class="order-list__item-property">
-              <dt>VAT relief:</dt>
+              <dt>VAT relief declaration:</dt>
               <dd>{{ vat_relief_note }}</dd>
             </div>
           {%- endif -%}
@@ -2288,7 +2288,7 @@
           {% endif %}
           {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -2587,7 +2587,7 @@
             <span class="order-list__item-variant">{{ line.selling_plan_allocation.selling_plan.name }}</span><br/>
           {% endif %}
 
-          {%- assign vat_relief_note = line.properties['VAT relief'] -%}
+          {%- assign vat_relief_note = line.properties['VAT relief declaration'] -%}
           {%- if vat_relief_note != blank -%}
             {%- assign vat_gross = line.final_line_price | times: 6 | divided_by: 5 -%}
             {%- assign vat_removed = vat_gross | minus: line.final_line_price -%}
@@ -2598,7 +2598,7 @@
               </span>
             </p>
             <div class="order-list__item-property">
-              <dt>VAT relief:</dt>
+              <dt>VAT relief declaration:</dt>
               <dd>{{ vat_relief_note }}</dd>
             </div>
           {%- endif -%}
@@ -2629,7 +2629,7 @@
           {% endif %}
           {% if line.original_line_price != line.final_line_price %}
             <del class="order-list__item-original-price">{{ line.original_line_price | money }}</del>
-          {% elsif line.properties['VAT relief'] != blank %}
+          {% elsif line.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = line.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -2937,7 +2937,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}
@@ -3054,7 +3054,7 @@
     <td class="order-list__price-cell">
         {% if component.original_line_price != component.final_line_price %}
             <del class="order-list__item-original-price">{{ component.original_line_price | money }}</del>
-          {% elsif component.properties['VAT relief'] != blank %}
+          {% elsif component.properties['VAT relief declaration'] != blank %}
             {%- assign vat_gross = component.final_line_price | times: 6 | divided_by: 5 -%}
             <del class="order-list__item-original-price">{{ vat_gross | money }}</del>
           {% endif %}

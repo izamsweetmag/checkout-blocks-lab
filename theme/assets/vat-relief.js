@@ -5,7 +5,8 @@
  *   taxed variant (gross price, taxable)  <->  clone variant (net price, taxable: false)
  *
  * Uses /cart/change.js so the line's other properties survive the swap. The
- * The declaration is written as the VISIBLE line property "VAT relief", so it
+ * The declaration is written as the VISIBLE line property "VAT relief declaration",
+ * so it
  * shows on the order in admin and on the confirmation email without anyone
  * having to go digging. The timestamp beside it is hidden (leading underscore)
  * because it is for audit, not for the buyer to read.
@@ -15,7 +16,12 @@
  * together and getting that wrong is how you ship a cart that lies about tax.
  */
 (function () {
-  const DECLARATION_PROPERTY = 'VAT relief';
+  const DECLARATION_PROPERTY = 'VAT relief declaration';
+  // Names this property has had before. A cart line created under an older name
+  // keeps it forever, because the swap below copies existing properties
+  // forward — so the line ends up showing two declarations at once. Strip these
+  // on every swap and stale carts heal themselves on the next toggle.
+  const LEGACY_DECLARATION_PROPERTIES = ['VAT relief', '_vat_relief'];
   const DECLARATION_VALUE = 'Customer declared eligibility';
   const DECLARED_AT_PROPERTY = '_vat_relief_declared_at';
   const CART_SECTION_ID = 'main-cart-items'; // rename to your theme's cart section
@@ -55,6 +61,8 @@
     }
 
     const properties = Object.assign({}, current.properties || {});
+    LEGACY_DECLARATION_PROPERTIES.forEach((key) => delete properties[key]);
+
     if (relieving) {
       properties[DECLARATION_PROPERTY] = DECLARATION_VALUE;
       // Timestamp the declaration — this is the audit trail, keep it.
@@ -91,9 +99,31 @@
       });
   }
 
+  // Bound in the CAPTURE phase, and it stops the event there.
+  //
+  // Dawn's <cart-items> element listens for any `change` that bubbles up from
+  // inside it and reads it as a quantity change:
+  //
+  //   onChange(event) {
+  //     this.updateQuantity(event.target.dataset.index, event.target.value, ...)
+  //   }
+  //
+  // This checkbox lives inside that element, so ticking it had Dawn POST
+  // /cart/change.js with line: undefined and quantity: "on". Shopify rejects
+  // that, Dawn's catch writes its generic failure string into #cart-errors —
+  // directly under the checkout button — and the reload below then wiped it.
+  // Harmless, but the buyer saw an error flash every time they ticked the box.
+  //
+  // Capture runs root-down, so this fires before <cart-items> sees the event.
+  // The work has to happen in THIS listener rather than a separate bubble one:
+  // stopPropagation() halts the bubble phase entirely, so a bubble-phase
+  // listener on document would never run.
   document.addEventListener('change', async (event) => {
-    const input = event.target.closest('input[data-vat-relief-toggle]');
+    const input =
+      event.target.closest && event.target.closest('input[data-vat-relief-toggle]');
     if (!input) return;
+
+    event.stopPropagation();
 
     const container = input.closest('[data-vat-relief]');
     setBusy(container, true);
@@ -109,5 +139,5 @@
       setBusy(container, false);
       window.alert('Sorry, we could not update VAT relief on that item. Please try again.');
     }
-  });
+  }, true);
 })();

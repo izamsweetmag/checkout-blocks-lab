@@ -16,7 +16,7 @@ const VAT_RATE = 0.2;
 const VAT_ELEMENT_OF_GROSS = VAT_RATE / (1 + VAT_RATE); // 0.166666…
 
 const ELIGIBILITY_TAG = 'VAT Exempt Opt';
-const DECLARATION_ATTRIBUTE = 'VAT relief';
+const DECLARATION_ATTRIBUTE = 'VAT relief declaration';
 
 /**
  * @typedef {import("../generated/api").CartInput} RunInput

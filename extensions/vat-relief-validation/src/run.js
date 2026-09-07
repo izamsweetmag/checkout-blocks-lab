@@ -12,7 +12,10 @@
  * Nothing in the theme can close that: it all runs in the browser. This does,
  * because it runs on Shopify's side of the checkout.
  *
- * The rule: a line on a relief variant must carry the "VAT relief" attribute.
+ * The rule: a line on a relief variant must carry the "VAT relief declaration"
+ * attribute. The name is deliberately distinct from the "VAT relief" variant
+ * OPTION — both render on the cart and the invoice, and identical labels there
+ * read as a duplicate.
  * No attribute, no checkout.
  *
  * @typedef {import("../generated/api").RunInput} RunInput

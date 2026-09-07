@@ -12,7 +12,8 @@
     - original variant (taxed)      -> unticked box, ticking swaps to the clone
     - clone variant (zero-rated)    -> ticked box, unticking swaps back
 
-  The buyer's declaration is recorded as the visible line property "VAT relief"
+  The buyer's declaration is recorded as the visible line property
+  "VAT relief declaration"
   (plus a hidden `_vat_relief_declared_at` timestamp) so the order carries
   evidence of the self-declaration, which is the part HMRC cares about. The
   property does NOT drive the tax — the merchandise does.
@@ -48,9 +49,7 @@
         {% if is_relieved %}checked{% endif %}
       >
       <span class="vat-relief__text">
-        The price shown includes VAT. If you qualify for VAT relief,
-        <strong>tick the box</strong> to remove the VAT.
-        <a href="/pages/vat-relief">What is VAT relief?</a>
+        <strong>Tick the box to remove VAT.</strong>
       </span>
     </label>
     <span class="vat-relief__status" data-vat-relief-status hidden>Updating…</span>

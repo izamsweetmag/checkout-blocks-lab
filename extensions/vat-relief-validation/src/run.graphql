@@ -5,7 +5,7 @@ query RunInput {
       quantity
       # Written by the cart-page checkbox. Its ABSENCE is the whole point of
       # this function: a zero-rated line with no declaration attached.
-      declaration: attribute(key: "VAT relief") {
+      declaration: attribute(key: "VAT relief declaration") {
         value
       }
       merchandise {

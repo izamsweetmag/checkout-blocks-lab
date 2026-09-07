@@ -27,7 +27,7 @@ import pathlib
 
 MARKER = "VAT RELIEF (-"
 
-TAG_BLOCK = """{{%- assign vat_relief_note = {var}.properties['VAT relief'] -%}}
+TAG_BLOCK = """{{%- assign vat_relief_note = {var}.properties['VAT relief declaration'] -%}}
           {{%- if vat_relief_note != blank -%}}
             {{%- assign vat_gross = {var}.final_line_price | times: 6 | divided_by: 5 -%}}
             {{%- assign vat_removed = vat_gross | minus: {var}.final_line_price -%}}
@@ -38,7 +38,7 @@ TAG_BLOCK = """{{%- assign vat_relief_note = {var}.properties['VAT relief'] -%}}
               </span>
             </p>
             <div class="order-list__item-property">
-              <dt>VAT relief:</dt>
+              <dt>VAT relief declaration:</dt>
               <dd>{{{{ vat_relief_note }}}}</dd>
             </div>
           {{%- endif -%}}
@@ -46,7 +46,7 @@ TAG_BLOCK = """{{%- assign vat_relief_note = {var}.properties['VAT relief'] -%}}
 
 PRICE_BLOCK = """{{% if {var}.original_line_price != {var}.final_line_price %}}
             <del class="order-list__item-original-price">{{{{ {var}.original_line_price | money }}}}</del>
-          {{% elsif {var}.properties['VAT relief'] != blank %}}
+          {{% elsif {var}.properties['VAT relief declaration'] != blank %}}
             {{%- assign vat_gross = {var}.final_line_price | times: 6 | divided_by: 5 -%}}
             <del class="order-list__item-original-price">{{{{ vat_gross | money }}}}</del>
           {{% endif %}}"""
