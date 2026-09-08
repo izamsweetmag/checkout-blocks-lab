@@ -1,0 +1,28 @@
+{
+  "buyerJourney": {
+    "step": "CART_INTERACTION"
+  },
+  "cart": {
+    "checkoutConfirmation": null,
+    "lines": [
+      {
+        "id": "gid://shopify/CartLine/1",
+        "quantity": 1,
+        "declaration": {
+          "value": "Customer declared eligibility"
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/1",
+          "title": "L / VAT relief applied",
+          "reliefPair": {
+            "value": "gid://shopify/ProductVariant/900"
+          },
+          "product": {
+            "title": "REMZZZ Mask Liner X32 VAT TEST"
+          }
+        }
+      }
+    ]
+  }
+}

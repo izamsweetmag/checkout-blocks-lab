@@ -1,0 +1,55 @@
+{%- comment -%}
+  Clears the CHECKOUT VAT declaration whenever the buyer is back on the
+  storefront.
+
+  Render once in layout/theme.liquid, just before </body>:
+
+    {% render 'vat-relief-reset' %}
+
+  Why this exists: `_vat_relief_confirmed_at` is a cart attribute, so it
+  survives the buyer leaving checkout. Without this, a buyer who ticks the
+  declaration, goes back to the cart, and returns to checkout finds the box
+  still ticked and the attestation already made — for a checkout visit they
+  have not actually read. The declaration has to be made fresh each time they
+  arrive at checkout, or it is not a declaration.
+
+  Checkout is not rendered by the theme, so this can never fire while the buyer
+  is IN checkout. It only runs on storefront pages, which is exactly where
+  "they left checkout" is observable.
+
+  Cost control: the POST only happens when there is something to clear. Liquid
+  already knows the current value, so a normal page view with no confirmation
+  outstanding makes no request at all.
+
+  The `pageshow` handler covers the back button. A bfcache restore does not
+  re-run inline scripts, so a buyer who ticks at checkout and then hits Back
+  would otherwise return to a page whose script already ran, with the stale
+  confirmation intact.
+{%- endcomment -%}
+
+<script>
+  (function () {
+    var outstanding = {% if cart.attributes['_vat_relief_confirmed_at'] != blank %}true{% else %}false{% endif %};
+
+    function clearConfirmation() {
+      return fetch('/cart/update.js', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+        // Shopify deletes an attribute set to the empty string.
+        body: JSON.stringify({attributes: {_vat_relief_confirmed_at: ''}}),
+      }).catch(function () {
+        /* A failed clear leaves the stale confirmation in place. The buyer is
+         * not blocked by that — worst case they are not asked to re-tick — so
+         * it is not worth an error in front of them. */
+      });
+    }
+
+    if (outstanding) clearConfirmation();
+
+    window.addEventListener('pageshow', function (event) {
+      // Restored from the back/forward cache: this page's Liquid is stale, so
+      // `outstanding` cannot be trusted and the clear runs unconditionally.
+      if (event.persisted) clearConfirmation();
+    });
+  })();
+</script>

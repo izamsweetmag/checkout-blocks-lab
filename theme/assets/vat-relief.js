@@ -32,7 +32,16 @@
   const CART_DECLARATION_ATTRIBUTE = 'VAT relief declaration';
   const CART_DECLARED_AT_ATTRIBUTE = '_vat_relief_declared_at';
   const CART_DECLARED_LINES_ATTRIBUTE = '_vat_relief_lines';
-  const CART_SECTION_ID = 'main-cart-items'; // rename to your theme's cart section
+  // Written at CHECKOUT by the confirmation block, not here. Cleared here on
+  // every toggle — see syncCartAttributes.
+  const CART_CONFIRMED_AT_ATTRIBUTE = '_vat_relief_confirmed_at';
+  /* The section ID from templates/cart.json — NOT the section type. In Dawn the
+   * type is `main-cart-items` but the id is `cart-items`, which is what
+   * `data-id="{{ section.id }}"` on the wrapper resolves to and what the Section
+   * Rendering API matches on. Getting this wrong is silent: the response simply
+   * omits the section. Harmless while the swap ends in a reload; breaks the day
+   * anyone replaces that with a re-render. */
+  const CART_SECTION_ID = 'cart-items';
 
   async function postJSON(url, body) {
     const response = await fetch(url, {
@@ -73,6 +82,14 @@
    *
    * The timestamp is the EARLIEST declaration in the cart — the moment the
    * buyer first declared, which is the one that belongs on the record.
+   *
+   * It also CLEARS the checkout confirmation, unconditionally, on every toggle.
+   * That attribute is written at checkout when the buyer ticks the declaration.
+   * If the buyer then comes back here and changes what they are claiming relief
+   * on, that earlier tick attested to a cart that no longer exists — and the
+   * validation function would accept it, letting them complete the new order
+   * without ever re-reading the declaration. Clearing it forces the attestation
+   * to always postdate the final cart.
    */
   async function syncCartAttributes() {
     const cart = await getCart();
@@ -95,6 +112,9 @@
     attributes[CART_DECLARED_LINES_ATTRIBUTE] = declaredLines
       ? String(declaredLines)
       : '';
+    // Always. Not only when clearing — a buyer who adds a SECOND relieved line
+    // after confirming has also changed what they attested to.
+    attributes[CART_CONFIRMED_AT_ATTRIBUTE] = '';
 
     await postJSON('/cart/update.js', {attributes});
   }

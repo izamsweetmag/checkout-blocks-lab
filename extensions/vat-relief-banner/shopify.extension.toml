@@ -8,7 +8,11 @@ type = "ui_extension"
 
   [extensions.capabilities]
   api_access = false
-  block_progress = false
+  # Lets the checkbox put its error inline, right under itself, instead of
+  # leaving the buyer with the validation function's generic checkout message.
+  # Nice to have, not the gate — vat-relief-validation is. Merchants can decline
+  # this in the checkout editor and the order is still blocked.
+  block_progress = true
   network_access = false
 
   # Dynamic block: the merchant drops it wherever it belongs in the checkout
@@ -29,4 +33,10 @@ type = "ui_extension"
     key = "body"
     type = "multi_line_text_field"
     name = "Declaration wording"
-    description = "The eligibility declaration read back to the buyer. Legal should own this copy."
+    description = "The eligibility declaration. Shown as body copy when the checkbox is off, and as the checkbox label when it is on — so it is the sentence the buyer actually agrees to. Legal should own this copy."
+
+    [[extensions.settings.fields]]
+    key = "require_confirmation"
+    type = "boolean"
+    name = "Show a confirmation checkbox"
+    description = "Off = inert banner (display only). On = the buyer must tick to confirm before the order can be completed, and the tick is timestamped onto the order. Enforced server-side by the VAT relief validation function, not by this setting alone."

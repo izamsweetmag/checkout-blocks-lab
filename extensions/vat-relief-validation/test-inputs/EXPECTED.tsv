@@ -1,0 +1,7 @@
+cart-relief-declared	pass
+cart-relief-undeclared	BLOCK (rule 1)
+cart-mixed-undeclared-relief	BLOCK (rule 1, relief line only)
+checkout-interaction-unconfirmed	pass (no error while typing an address)
+checkout-completion-unconfirmed	BLOCK (rule 2)
+checkout-completion-confirmed	pass
+checkout-completion-no-relief	pass

@@ -2721,7 +2721,7 @@ export enum WeightUnit {
 export type RunInputVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RunInput = { __typename?: 'Input', cart: { __typename?: 'Cart', lines: Array<{ __typename?: 'CartLine', id: string, quantity: number, declaration?: { __typename?: 'Attribute', value?: string | null } | null, merchandise:
+export type RunInput = { __typename?: 'Input', buyerJourney: { __typename?: 'BuyerJourney', step?: BuyerJourneyStep | null }, cart: { __typename?: 'Cart', checkoutConfirmation?: { __typename?: 'Attribute', value?: string | null } | null, lines: Array<{ __typename?: 'CartLine', id: string, quantity: number, declaration?: { __typename?: 'Attribute', value?: string | null } | null, merchandise:
         | { __typename: 'CustomProduct' }
         | { __typename: 'ProductVariant', id: string, title?: string | null, reliefPair?: { __typename?: 'Metafield', value: string } | null, product: { __typename?: 'Product', title: string } }
        }> } };

@@ -143,21 +143,36 @@ line reaching an order with no declaration attached to it**. Steps 1–3 remove
 the routes buyers actually stumble into; they do not make that impossible.
 
 The only thing that does is the checkout validation function in
-`extensions/vat-relief-validation`, which runs on Shopify's side and rejects any
-relief-variant line missing its declaration, regardless of how checkout was
-reached. It is now **built and unit-tested** (`dist/function.wasm` exists; the
-three cart cases below pass) but **not yet deployed**:
+`extensions/vat-relief-validation`, which runs on Shopify's side and rejects both
+a relief-variant line missing its cart declaration and an order being completed
+without the checkout re-attestation — regardless of how checkout was reached.
+
+Every case below is a committed fixture. Run them against the built wasm:
 
 ```bash
-# from the repo root, on Node >= 22.12
+nvm use 22.23.2                       # the CLI needs Node >= 22.12
+cd extensions/vat-relief-validation
+npm run build                         # only if you edited src/run.js
+npm run cases
+```
+
+`npm run cases` exits non-zero on any mismatch, so it works in CI. Then deploy:
+
+```bash
+# from the repo root
 shopify app deploy
 ```
 
-| Cart | Result |
-|---|---|
-| Relief line **with** declaration | passes |
-| Relief line **without** declaration | blocked, error names the product |
-| Taxed line without declaration + relief line with a blank declaration | taxed line ignored, relief line blocked |
+| Cart | Buyer journey step | Result |
+|---|---|---|
+| Relief line **with** declaration | cart interaction | passes |
+| Relief line **without** declaration | cart interaction | blocked, error names the product |
+| Taxed line without declaration + relief line with a blank declaration | cart interaction | taxed line ignored, relief line blocked |
+| Relief line, checkout declaration **not** ticked | checkout completion | blocked |
+| Relief line, checkout declaration ticked | checkout completion | passes |
+| Relief line, checkout declaration not ticked | cart interaction | passes — the cart must not break over a box that only exists at checkout |
+| Relief line, checkout declaration not ticked | checkout interaction | passes — no error while the buyer is still typing an address |
+| No relief line at all | checkout completion | passes |
 
 Treat steps 1-4 as UX and the validation function as the control.
 

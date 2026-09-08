@@ -1,5 +1,17 @@
 query RunInput {
+  # Which stage the buyer is at. The same function runs on cart writes and at
+  # checkout, so without this there is no way to require something that only
+  # exists at checkout — asking for it on a cart write would reject the cart for
+  # missing a box the buyer has not been shown yet.
+  buyerJourney {
+    step
+  }
   cart {
+    # Written by the checkout UI extension when the buyer ticks the declaration.
+    # Cart-level, not per line: it is one attestation covering the whole order.
+    checkoutConfirmation: attribute(key: "_vat_relief_confirmed_at") {
+      value
+    }
     lines {
       id
       quantity

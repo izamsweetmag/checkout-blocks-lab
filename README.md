@@ -63,15 +63,40 @@ Register it in the admin as an **automatic product discount** after
 Betsy's step 6. A dynamic block (`purchase.checkout.block.render`) that reads the
 `VAT relief declaration` attribute off the cart lines and reads the declaration
 back to the buyer, naming the lines it applies to and the time it was made.
-Renders nothing when no line carries a declaration. No input, nothing the buyer
-can change: by checkout the price is already net and the merchandise is already
-non-taxable.
+Renders nothing when no line carries a declaration.
+
+A merchant setting, **Show a confirmation checkbox**, switches it between two
+shapes: off is Betsy's inert banner; on turns the declaration itself into a
+checkbox label the buyer **must tick before checkout will proceed**, timestamped
+into the `_vat_relief_confirmed_at` cart attribute. One piece of copy either
+way — a paragraph plus a shorter "I confirm the above" would give legal two
+strings that can drift apart.
+
+The enforcement is **not** in this extension. The validation function below
+requires the confirmation server-side. The extension additionally registers a
+`useBuyerJourneyIntercept` so the error lands inline under the checkbox rather
+than as a generic checkout message — that hook is deprecated and only fires if
+the merchant granted `block_progress` in the checkout editor, so it is allowed
+to fail. When it does, the order is still blocked.
 
 ### `extensions/vat-relief-validation` — checkout validation function
 Not on Betsy's list, and the reason the scheme is enforceable rather than merely
-inconvenient to bypass. Blocks checkout on any line whose variant is a
-zero-rated counterpart but which carries no `VAT relief declaration` attribute —
-i.e. someone who reached the net-priced variant without ticking the box.
+inconvenient to bypass. Two rules:
+
+1. **Every relief line carries a cart-page declaration.** Blocks any line whose
+   variant is a zero-rated counterpart but which has no `VAT relief declaration`
+   attribute — i.e. someone who reached the net-priced variant without ticking
+   the box.
+2. **The buyer re-attests at checkout.** Requires the
+   `_vat_relief_confirmed_at` cart attribute written by the checkout block's
+   checkbox.
+
+Rule 2 is only applied at `buyerJourney.step === CHECKOUT_COMPLETION`. That
+field is what makes it possible at all: the same target runs on cart writes, so
+requiring the confirmation unconditionally would reject the **cart** for missing
+a box that only exists at checkout. `CHECKOUT_INTERACTION` is deliberately
+excluded too — it fires while the buyer is typing an address, and an error then
+appears before they have had a chance to reach the checkbox.
 
 ## Before you run it: the two things this test will show
 

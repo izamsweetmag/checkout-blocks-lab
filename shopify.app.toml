@@ -19,9 +19,19 @@ api_version = "2026-10"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  # Copies the VAT relief declaration off the order's attributes and line
+  # properties onto typed order metafields. See webhooks.orders.create.tsx.
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks/orders/create"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,read_publications,write_publications,write_validations"
+# write_orders is needed to set order metafields from the orders/create webhook,
+# and orders topics require read access to subscribe at all. Orders are
+# protected customer data — the app needs that access approved in the Partner
+# dashboard before the subscription will deliver.
+scopes = "write_products,read_publications,write_publications,write_validations,write_orders"
 
 [auth]
 redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]

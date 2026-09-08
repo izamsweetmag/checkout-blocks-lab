@@ -36,6 +36,7 @@ import {
   RELIEF_OPTION_YES,
   isEligibleProductValue,
   netPrice,
+  optionCapacityProblem,
   reliefValueOf,
   type DriftRow,
   type EligibleProduct,
@@ -235,7 +236,7 @@ const PRODUCT_FIELDS = `
       }
       original: metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${ORIGINAL_VARIANT_KEY}") {
         reference {
-          ... on ProductVariant { id price }
+          ... on ProductVariant { id price sku }
         }
       }
     }
@@ -390,6 +391,7 @@ export async function provisionReliefVariants(
   products: EligibleProduct[],
 ) {
   const created: { product: string; variants: number }[] = [];
+  const skipped: { product: string; reason: string }[] = [];
 
   for (const initial of products) {
     // Last line of defence. Provisioning mutates the original product, so an
@@ -401,122 +403,150 @@ export async function provisionReliefVariants(
       );
     }
 
-    // 1. Add the option if the product doesn't have it yet. LEAVE_AS_IS updates
-    //    existing variants to carry the first value ("No") without creating any.
-    if (!initial.hasReliefOption) {
-      const optionData = await gql<{ productOptionsCreate: any }>(
-        admin,
-        PRODUCT_OPTIONS_CREATE,
-        {
-          productId: initial.id,
-          options: [
-            {
-              name: RELIEF_OPTION_NAME,
-              values: [{ name: RELIEF_OPTION_NO }, { name: RELIEF_OPTION_YES }],
-            },
-          ],
-        },
-      );
-
-      const optionErrors = userErrors(optionData.productOptionsCreate);
-      if (optionErrors.length) {
-        throw new Error(`${initial.title}: ${optionErrors.join("; ")}`);
-      }
+    // A product on all three option slots can never take a fourth. Reported
+    // here rather than left to Shopify, which answers with a bare
+    // OPTIONS_OVER_LIMIT after the run is already part-done.
+    const capacity = optionCapacityProblem(initial);
+    if (capacity) {
+      skipped.push({ product: initial.title, reason: capacity });
+      continue;
     }
 
-    // 2. Re-read rather than predicting what the option change did to each
-    //    variant's selectedOptions. Guessing here is how you create variants
-    //    with the wrong option combination.
-    const product = await readProduct(admin, initial.id);
+    try {
+      // 1. Add the option if the product doesn't have it yet. LEAVE_AS_IS updates
+      //    existing variants to carry the first value ("No") without creating any.
+      if (!initial.hasReliefOption) {
+        const optionData = await gql<{ productOptionsCreate: any }>(
+          admin,
+          PRODUCT_OPTIONS_CREATE,
+          {
+            productId: initial.id,
+            options: [
+              {
+                name: RELIEF_OPTION_NAME,
+                values: [{ name: RELIEF_OPTION_NO }, { name: RELIEF_OPTION_YES }],
+              },
+            ],
+          },
+        );
 
-    const taxed = product.variants.filter(
-      (variant) => !variant.isReliefVariant && !variant.pairedVariantId,
-    );
-    if (!taxed.length) continue;
+        const optionErrors = userErrors(optionData.productOptionsCreate);
+        if (optionErrors.length) {
+          throw new Error(`${initial.title}: ${optionErrors.join("; ")}`);
+        }
+      }
 
-    // 3. Build the relief counterparts from the variant's real current options.
-    const variantsInput = taxed.map((variant) => {
-      const optionValues = variant.selectedOptions.map((option) => ({
-        optionName: option.name,
-        name:
-          option.name === RELIEF_OPTION_NAME ? RELIEF_OPTION_YES : option.value,
-      }));
+      // 2. Re-read rather than predicting what the option change did to each
+      //    variant's selectedOptions. Guessing here is how you create variants
+      //    with the wrong option combination.
+      const product = await readProduct(admin, initial.id);
 
-      if (!optionValues.some((o) => o.optionName === RELIEF_OPTION_NAME)) {
-        optionValues.push({
-          optionName: RELIEF_OPTION_NAME,
-          name: RELIEF_OPTION_YES,
+      const taxed = product.variants.filter(
+        (variant) => !variant.isReliefVariant && !variant.pairedVariantId,
+      );
+      if (!taxed.length) continue;
+
+      // 3. Build the relief counterparts from the variant's real current options.
+      const variantsInput = taxed.map((variant) => {
+        const optionValues = variant.selectedOptions.map((option) => ({
+          optionName: option.name,
+          name:
+            option.name === RELIEF_OPTION_NAME ? RELIEF_OPTION_YES : option.value,
+        }));
+
+        if (!optionValues.some((o) => o.optionName === RELIEF_OPTION_NAME)) {
+          optionValues.push({
+            optionName: RELIEF_OPTION_NAME,
+            name: RELIEF_OPTION_YES,
+          });
+        }
+
+        return {
+          price: variant.expectedReliefPrice,
+          taxable: false,
+          optionValues,
+          inventoryItem: {
+            /* The SAME SKU as the taxed variant, deliberately.
+             *
+             * The pair is one physical item sold under two tax treatments, and
+             * the SKU is what reaches ResMed's ERP. A suffixed code is one the
+             * ERP has never seen, so a VAT-relief order would arrive against an
+             * unknown line. Shopify does not require SKUs to be unique — it
+             * shows a duplicate warning in admin and nothing more.
+             *
+             * This does NOT merge stock. Inventory is keyed on the inventory
+             * item, one per variant, whatever the SKU says. */
+            sku: variant.sku || undefined,
+            // Two variants cannot share an inventory item. Untracked means the
+            // relief variant never blocks a sale — see VAT-RELIEF-VARIANT-SWAP.md.
+            tracked: false,
+          },
+        };
+      });
+
+      const variantsData = await gql<{ productVariantsBulkCreate: any }>(
+        admin,
+        VARIANTS_BULK_CREATE,
+        { productId: product.id, variants: variantsInput },
+      );
+
+      const variantErrors = userErrors(variantsData.productVariantsBulkCreate);
+      if (variantErrors.length) {
+        throw new Error(`${product.title}: ${variantErrors.join("; ")}`);
+      }
+
+      const reliefVariants =
+        variantsData.productVariantsBulkCreate.productVariants ?? [];
+
+      // 4. Link the pairs in both directions, matching on the non-relief options.
+      const metafields: Record<string, string>[] = [];
+      for (const original of taxed) {
+        const key = optionKey(original.selectedOptions);
+        const relief = reliefVariants.find(
+          (candidate: any) => optionKey(candidate.selectedOptions) === key,
+        );
+        if (!relief) continue;
+
+        metafields.push({
+          ownerId: original.id,
+          namespace: METAFIELD_NAMESPACE,
+          key: PAIRED_VARIANT_KEY,
+          type: "variant_reference",
+          value: relief.id,
+        });
+        metafields.push({
+          ownerId: relief.id,
+          namespace: METAFIELD_NAMESPACE,
+          key: ORIGINAL_VARIANT_KEY,
+          type: "variant_reference",
+          value: original.id,
         });
       }
 
-      return {
-        price: variant.expectedReliefPrice,
-        taxable: false,
-        optionValues,
-        inventoryItem: {
-          sku: variant.sku ? `${variant.sku}-VATFREE` : undefined,
-          // Two variants cannot share an inventory item. Untracked means the
-          // relief variant never blocks a sale — see VAT-RELIEF-VARIANT-SWAP.md.
-          tracked: false,
-        },
-      };
-    });
-
-    const variantsData = await gql<{ productVariantsBulkCreate: any }>(
-      admin,
-      VARIANTS_BULK_CREATE,
-      { productId: product.id, variants: variantsInput },
-    );
-
-    const variantErrors = userErrors(variantsData.productVariantsBulkCreate);
-    if (variantErrors.length) {
-      throw new Error(`${product.title}: ${variantErrors.join("; ")}`);
-    }
-
-    const reliefVariants =
-      variantsData.productVariantsBulkCreate.productVariants ?? [];
-
-    // 4. Link the pairs in both directions, matching on the non-relief options.
-    const metafields: Record<string, string>[] = [];
-    for (const original of taxed) {
-      const key = optionKey(original.selectedOptions);
-      const relief = reliefVariants.find(
-        (candidate: any) => optionKey(candidate.selectedOptions) === key,
-      );
-      if (!relief) continue;
-
-      metafields.push({
-        ownerId: original.id,
-        namespace: METAFIELD_NAMESPACE,
-        key: PAIRED_VARIANT_KEY,
-        type: "variant_reference",
-        value: relief.id,
-      });
-      metafields.push({
-        ownerId: relief.id,
-        namespace: METAFIELD_NAMESPACE,
-        key: ORIGINAL_VARIANT_KEY,
-        type: "variant_reference",
-        value: original.id,
-      });
-    }
-
-    if (metafields.length) {
-      const metafieldData = await gql<{ metafieldsSet: any }>(
-        admin,
-        METAFIELDS_SET,
-        { metafields },
-      );
-      const metafieldErrors = userErrors(metafieldData.metafieldsSet);
-      if (metafieldErrors.length) {
-        throw new Error(`${product.title}: ${metafieldErrors.join("; ")}`);
+      if (metafields.length) {
+        const metafieldData = await gql<{ metafieldsSet: any }>(
+          admin,
+          METAFIELDS_SET,
+          { metafields },
+        );
+        const metafieldErrors = userErrors(metafieldData.metafieldsSet);
+        if (metafieldErrors.length) {
+          throw new Error(`${product.title}: ${metafieldErrors.join("; ")}`);
+        }
       }
-    }
 
-    created.push({ product: product.title, variants: reliefVariants.length });
+      created.push({ product: product.title, variants: reliefVariants.length });
+    } catch (error) {
+      /* One product's failure is not the run's failure. Provisioning is
+       * per-product and idempotent — variants already carrying a pairing
+       * metafield are skipped on the next pass — so finishing the rest and
+       * naming what broke beats aborting halfway with no report of how far it
+       * got. */
+      skipped.push({ product: initial.title, reason: (error as Error).message });
+    }
   }
 
-  return created;
+  return { created, skipped };
 }
 
 // ---------------------------------------------------------------------------
@@ -548,6 +578,9 @@ export async function checkDrift(admin: Admin, first = 250): Promise<DriftRow[]>
       const original = variant.original?.reference ?? null;
       const expected = original ? netPrice(original.price) : null;
 
+      const originalSku = original?.sku || null;
+      const reliefSku = variant.sku || null;
+
       let problem: string | null = null;
       if (!original) {
         problem = "relief variant has no link back to a taxed variant";
@@ -555,6 +588,13 @@ export async function checkDrift(admin: Admin, first = 250): Promise<DriftRow[]>
         problem = "relief variant is still taxable — VAT will be charged";
       } else if (expected !== variant.price) {
         problem = `price drift: relief variant is ${variant.price}, should be ${expected}`;
+      } else if (originalSku !== reliefSku) {
+        /* The pair must carry ONE SKU, because that is the code the ERP
+         * recognises. A relief line under a code the ERP has never seen does
+         * not fail loudly at checkout — it fails later, at fulfilment. */
+        problem =
+          `SKU drift: relief variant is ${reliefSku ?? "(blank)"}, ` +
+          `should match the taxed variant's ${originalSku ?? "(blank)"}`;
       }
 
       rows.push({
@@ -563,6 +603,8 @@ export async function checkDrift(admin: Admin, first = 250): Promise<DriftRow[]>
         originalPrice: original?.price ?? null,
         reliefPrice: variant.price,
         expectedReliefPrice: expected,
+        originalSku,
+        reliefSku,
         taxable: variant.taxable,
         problem,
       });
