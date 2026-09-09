@@ -9,8 +9,8 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
@@ -18,9 +18,13 @@ model Session {
   shop          String
   state         String
   isOnline      Boolean   @default(false)
-  scope         String?
+  // MySQL defaults String to VARCHAR(191). Tokens and the scope list can run
+  // past that, and a truncated access token fails auth silently, so the fields
+  // that have no sane upper bound are TEXT. `id` stays VARCHAR — it is the
+  // primary key and cannot be TEXT; session ids are `offline_<shop domain>`.
+  scope         String?   @db.Text
   expires       DateTime?
-  accessToken   String
+  accessToken   String    @db.Text
   userId        BigInt?
   firstName     String?
   lastName      String?
@@ -29,6 +33,6 @@ model Session {
   locale        String?
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
-  refreshToken        String?
+  refreshToken        String?   @db.Text
   refreshTokenExpires DateTime?
 }
